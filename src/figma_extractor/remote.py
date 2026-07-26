@@ -68,49 +68,10 @@ class FigmaClient:
         return response.json()
 
     def get_images(self, file_key: str) -> dict[str, str]:
-        """Fill-image asset map (hash → download URL), not node screenshots."""
+        """Fill-image asset map (hash → download URL)."""
         response = self._client.get(f"/files/{file_key}/images")
         self._raise(response)
         return (response.json().get("meta") or {}).get("images") or {}
-
-    def render_nodes(
-        self,
-        file_key: str,
-        node_ids: list[str],
-        *,
-        format: str = "png",
-        scale: float = 1.0,
-        use_absolute_bounds: bool = True,
-    ) -> dict[str, str | None]:
-        """
-        Render document nodes via ``GET /v1/images/:file_key``.
-
-        Returns a map of node id → temporary download URL (or ``None`` when
-        Figma could not render that node).
-        """
-        if not node_ids:
-            return {}
-        fmt = format.lower().strip()
-        if fmt not in {"png", "jpg", "svg", "pdf"}:
-            raise ValueError(f"Unsupported screenshot format: {format!r}")
-        if not 0.01 <= scale <= 4.0:
-            raise ValueError("Screenshot scale must be between 0.01 and 4.0")
-
-        response = self._client.get(
-            f"/images/{file_key}",
-            params={
-                "ids": ",".join(node_ids),
-                "format": fmt,
-                "scale": scale,
-                "use_absolute_bounds": str(use_absolute_bounds).lower(),
-            },
-        )
-        self._raise(response)
-        payload = response.json()
-        if payload.get("err"):
-            raise RuntimeError(f"Figma images API error: {payload['err']}")
-        images = payload.get("images") or {}
-        return {str(node_id): images.get(node_id) for node_id in node_ids}
 
     @staticmethod
     def _raise(response: httpx.Response) -> None:
@@ -199,7 +160,7 @@ def _paint(paint: dict[str, Any]) -> dict[str, Any]:
         "blendMode": paint.get("blendMode", "NORMAL"),
     }
     if paint.get("color"):
-        # Keep colour-channel alpha separate from paint opacity so trees'
+        # Keep colour-channel alpha separate from paint opacity so
         # to_css_color(color, paint.opacity) does not double-multiply.
         result["color"] = dict(paint["color"])
     if paint.get("imageRef"):

@@ -1,4 +1,4 @@
-"""Build renderable per-screen layout trees into ``design/trees/``.
+"""Build per-screen layout trees into ``trees/`` for LLM / UI rebuild.
 
 Each tree is a self-contained description of one screen: auto-layout, paints,
 strokes, shadows, text styling, and decoded vector outlines. Component
@@ -10,7 +10,7 @@ Example::
     from figma_extractor.extract import build_screen_trees
 
     build_screen_trees(Path("out"))
-    # -> out/design/trees/<page>__<screen>.json
+    # -> out/trees/<page>__<screen>.json
 """
 
 from __future__ import annotations
@@ -540,7 +540,7 @@ class _TreeBuilder:
 
 def build_screen_trees(out: Path) -> dict[str, Any]:
     """
-    Write one renderable JSON tree per screen under ``design/trees/`` and record
+    Write one layout JSON tree per screen under ``trees/`` and record
     ``tree`` / ``slug`` on every entry in ``screens.json``.
     """
     nodes_file = require_file(

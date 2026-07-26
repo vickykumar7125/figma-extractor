@@ -12,20 +12,19 @@ Quick start
 
 CLI::
 
-    figma-extractor extract --file ./design.fig --output ./out --render
-    figma-extractor render --dir ./out
+    figma-extractor extract --file ./design.fig --output ./out
     figma-extractor info --dir ./out
 
 Python::
 
-    from figma_extractor import extract, info, render
+    from figma_extractor import extract, info
 
-    extract(file="./design.fig", output="./out", render=True)
+    extract(file="./design.fig", output="./out")
     details = info("./out")
     print(details["summary"])
 """
 
-from figma_extractor.api import export_screenshots, extract, info, render
+from figma_extractor.api import extract, info
 
-__version__ = "1.8.1"
-__all__ = ["extract", "info", "render", "export_screenshots", "__version__"]
+__version__ = "2.1.0"
+__all__ = ["extract", "info", "__version__"]

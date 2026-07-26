@@ -4,6 +4,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Curated files written at the output root (no nested design/ folder).
+DELIVERABLE_DIRS: tuple[str, ...] = (
+    "tokens",
+    "assets",
+    "structure",
+    "trees",
+    "components",
+)
+DELIVERABLE_FILES: tuple[str, ...] = (
+    "pages.json",
+    "screens.json",
+    "components.json",
+    "component-sets.json",
+    "text-content.json",
+    "ui-flow.json",
+    "STRUCTURE.md",
+    "COMPONENTS.md",
+    "LLM.md",
+)
+# Temporary decode cache — removed after extract unless keep_intermediates.
+INTERMEDIATE_DIRS: tuple[str, ...] = ("source", "extracted")
+# Older extracts nested everything under design/; still wiped on --clean.
+LEGACY_DIRS: tuple[str, ...] = ("design",)
+
 
 def resolve_out(path: Path | str) -> Path:
     return Path(path).expanduser().resolve()
@@ -20,8 +44,8 @@ def extracted_dir(out: Path) -> Path:
 
 
 def design_dir(out: Path) -> Path:
-    """Curated deliverable consumed by UI tooling."""
-    return out / "design"
+    """Curated deliverable root — same as ``out`` (tokens, assets, JSON live here)."""
+    return out
 
 
 def nodes_path(out: Path) -> Path:

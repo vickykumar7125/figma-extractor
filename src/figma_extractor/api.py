@@ -8,24 +8,13 @@ Local file::
     from figma_extractor import extract, info
 
     result = extract(file="design.fig", output="out")
-    print(result["design"])
+    print(result["output"])
 
-Remote file with screen screenshots (Approach A)::
+Remote file::
 
     result = extract(
         remote="https://www.figma.com/design/ABC123/MyFile",
         output="out",
-        api_key="figd_...",
-        screenshots=True,
-    )
-
-Local extract + cloud renders (same file must exist in Figma)::
-
-    result = extract(
-        file="design.fig",
-        output="out",
-        screenshots=True,
-        file_key="ABC123",
         api_key="figd_...",
     )
 
@@ -33,7 +22,7 @@ Inspect a previous run::
 
     details = info("out")
     for screen in details["screens"]:
-        print(screen["name"], screen.get("screenshot"))
+        print(screen["name"], screen["width"], screen["height"])
 """
 
 from __future__ import annotations
@@ -47,13 +36,20 @@ import orjson
 from figma_extractor.extract import (
     build_images,
     build_screen_trees,
-    build_screenshots,
     build_structure,
     build_tokens,
-    render_screenshots,
+    build_ui_flow,
 )
 from figma_extractor.fig import decode_canvas, unzip_fig
-from figma_extractor.paths import design_dir, extracted_dir, source_dir
+from figma_extractor.paths import (
+    DELIVERABLE_DIRS,
+    DELIVERABLE_FILES,
+    INTERMEDIATE_DIRS,
+    LEGACY_DIRS,
+    design_dir,
+    extracted_dir,
+    source_dir,
+)
 from figma_extractor.remote import (
     FigmaClient,
     download_remote_images,
@@ -62,12 +58,24 @@ from figma_extractor.remote import (
 )
 
 
+def _remove_path(target: Path) -> None:
+    if target.is_dir():
+        shutil.rmtree(target)
+    elif target.is_file() or target.is_symlink():
+        target.unlink()
+
+
 def _clean_output(output_path: Path) -> None:
-    """Wipe previous extract artifacts so each run is a fresh rebuild."""
-    for name in ("design", "screenshot", "source", "extracted"):
-        target = output_path / name
-        if target.exists():
-            shutil.rmtree(target)
+    """Wipe previous deliverables and intermediates so each run is a fresh rebuild."""
+    for name in (*DELIVERABLE_DIRS, *INTERMEDIATE_DIRS, *LEGACY_DIRS):
+        _remove_path(output_path / name)
+    for name in DELIVERABLE_FILES:
+        _remove_path(output_path / name)
+
+
+def _clean_intermediates(output_path: Path) -> None:
+    for name in INTERMEDIATE_DIRS:
+        _remove_path(output_path / name)
 
 
 def extract(
@@ -77,38 +85,25 @@ def extract(
     output: str | Path,
     api_key: str | None = None,
     keep_intermediates: bool = False,
-    screenshots: bool = False,
-    file_key: str | None = None,
-    screenshot_format: str = "png",
-    screenshot_scale: float = 1.0,
-    render: bool = False,
-    render_limit: int | None = None,
-    render_scale: float = 1.0,
-    render_page: str | None = None,
     clean: bool = True,
 ) -> dict[str, Any]:
     """
-    Extract a Figma file into ``<output>/design``.
+    Extract a Figma file into ``<output>/``.
 
     Pass exactly one of ``file`` (local ``.fig``) or ``remote`` (file key / URL).
     Remote extraction requires ``api_key`` (or set ``FIGMA_API_KEY`` when using the CLI).
 
-    When ``clean=True`` (default), previous ``design/``, ``screenshot/``,
-    ``source/``, and ``extracted/`` under the output directory are removed first
-    so each run is a fresh rebuild.
+    Deliverables (tokens, trees, ui-flow, assets, pages.json, …) are written at
+    the output root — there is no nested ``design/`` folder. Temporary ``source/``
+    and ``extracted/`` are removed after a successful run unless
+    ``keep_intermediates=True``.
 
-    Multi-UI board frames (e.g. Auth - Branded containing Sign In + Sign Up) are
-    split into one screen tree / PNG per nested UI.
+    When ``clean=True`` (default), previous deliverables and intermediates under
+    the output directory are removed first so each run is a fresh rebuild.
 
-    When ``render=True``, each screen tree is converted to HTML using ``design/``
-    tokens/assets and captured into ``<output>/screenshot/`` (no Figma API).
-
-    When ``screenshots=True``, each screen frame is also rendered through Figma's
-    Images API into ``design/screenshots/`` (requires cloud ``file_key`` + ``api_key``).
-
-    Returns a summary dict with keys: ``source``, ``output``, ``design``,
-    ``decode``, ``tokens``, ``structure``, ``images``, ``trees``, ``render``,
-    ``screenshots``, ``intermediatesKept``.
+    Returns a summary dict with keys: ``source``, ``output``, ``design`` (alias of
+    ``output``), ``decode``, ``tokens``, ``structure``, ``images``, ``trees``,
+    ``flow``, ``intermediatesKept``.
     """
     if bool(file) == bool(remote):
         raise ValueError("Provide exactly one of `file` or `remote`")
@@ -118,7 +113,6 @@ def extract(
     if clean:
         _clean_output(output_path)
 
-    remote_file_key: str | None = None
     if file is not None:
         source_kind, source_value, decode_summary = _extract_local(file, output_path)
     else:
@@ -127,141 +121,61 @@ def extract(
             output_path,
             api_key,
         )
-        remote_file_key = source_value
 
     tokens = build_tokens(output_path)
     structure = build_structure(output_path)
     images = build_images(output_path)
     trees = build_screen_trees(output_path)
-
-    screenshot_summary: dict[str, Any] | None = None
-    if screenshots:
-        resolved_key = parse_file_key(file_key) if file_key else remote_file_key
-        if not resolved_key:
-            raise ValueError(
-                "Cloud screenshots require a Figma file key. Pass file_key=... "
-                "(local extract) or use remote=... so the key is known."
-            )
-        if not api_key:
-            raise ValueError("Cloud screenshots require api_key (or FIGMA_API_KEY in the CLI)")
-        screenshot_summary = build_screenshots(
-            output_path,
-            file_key=resolved_key,
-            api_key=api_key,
-            format=screenshot_format,
-            scale=screenshot_scale,
-        )
+    flow = build_ui_flow(output_path)
 
     if not keep_intermediates:
-        shutil.rmtree(source_dir(output_path), ignore_errors=True)
-        shutil.rmtree(extracted_dir(output_path), ignore_errors=True)
+        _clean_intermediates(output_path)
 
-    render_summary: dict[str, Any] | None = None
-    if render:
-        render_summary = render_screenshots(
-            output_path,
-            limit=render_limit,
-            scale=render_scale,
-            page=render_page,
-        )
-
+    root = str(design_dir(output_path))
     return {
         "source": {"type": source_kind, "value": source_value},
         "output": str(output_path),
-        "design": str(design_dir(output_path)),
+        "design": root,
         "decode": decode_summary,
         "tokens": tokens,
         "structure": structure,
         "images": images,
         "trees": trees,
-        "render": render_summary,
-        "screenshots": screenshot_summary,
+        "flow": flow,
         "intermediatesKept": keep_intermediates,
     }
-
-
-def render(
-    directory: str | Path,
-    *,
-    limit: int | None = None,
-    scale: float = 1.0,
-    page: str | None = None,
-) -> dict[str, Any]:
-    """
-    Rebuild local PNG screenshots from an existing ``design/`` extract.
-
-    Requires ``design/trees/`` (produced by extract). Writes ``<root>/screenshot/``.
-    """
-    design = resolve_design_dir(directory)
-    out = design.parent if design.name == "design" else design
-    trees_dir = design / "trees"
-    if not trees_dir.is_dir():
-        raise FileNotFoundError(
-            f"Missing {trees_dir}. Re-run extract to generate screen trees first."
-        )
-    return render_screenshots(out, limit=limit, scale=scale, page=page)
-
-
-def export_screenshots(
-    directory: str | Path,
-    *,
-    file_key: str,
-    api_key: str,
-    format: str = "png",
-    scale: float = 1.0,
-) -> dict[str, Any]:
-    """
-    Render screenshots for an existing extraction directory.
-
-    ``directory`` may be the extraction root (contains ``design/``) or ``design/``.
-    """
-    design = resolve_design_dir(directory)
-    out = design.parent if design.name == "design" else design
-    return build_screenshots(
-        out,
-        file_key=parse_file_key(file_key),
-        api_key=api_key,
-        format=format,
-        scale=scale,
-    )
 
 
 def info(directory: str | Path | None = None) -> dict[str, Any]:
     """
     Load a complete extraction report from ``directory``.
 
-    ``directory`` may be the extraction root (contains ``design/``) or the
-    ``design/`` folder itself. When omitted, the current working directory is used.
+    ``directory`` is the extraction root (contains ``pages.json`` / ``tokens/``).
+    Older extracts that nested files under ``design/`` are still accepted.
+    When omitted, the current working directory is used.
 
     Returns pages, screens, components, component sets, tokens, assets, and text,
     plus a compact ``summary`` block.
     """
-    design = resolve_design_dir(directory)
-    pages = _load_json(design / "pages.json", [])
-    screens = _load_json(design / "screens.json", [])
-    components = _load_json(design / "components.json", [])
-    component_sets = _load_json(design / "component-sets.json", [])
-    text = _load_json(design / "text-content.json", {})
-    variables = _load_json(design / "tokens" / "variables.json", {})
-    typography = _load_json(design / "tokens" / "typography.json", {})
-    effects = _load_json(design / "tokens" / "effects.json", [])
-    assets = _load_json(design / "assets" / "manifest.json", [])
-    screenshot_manifest = _load_json(design / "screenshots" / "manifest.json", {})
-    local_shot_manifest = _load_json(
-        (design.parent / "screenshot" / "manifest.json")
-        if design.name == "design"
-        else (design / "screenshot" / "manifest.json"),
-        {},
-    )
+    root = resolve_output_dir(directory)
+    pages = _load_json(root / "pages.json", [])
+    screens = _load_json(root / "screens.json", [])
+    components = _load_json(root / "components.json", [])
+    component_sets = _load_json(root / "component-sets.json", [])
+    text = _load_json(root / "text-content.json", {})
+    variables = _load_json(root / "tokens" / "variables.json", {})
+    typography = _load_json(root / "tokens" / "typography.json", {})
+    effects = _load_json(root / "tokens" / "effects.json", [])
+    assets = _load_json(root / "assets" / "manifest.json", [])
+    ui_flow = _load_json(root / "ui-flow.json", {})
+    trees_with = sum(1 for screen in screens if screen.get("tree"))
 
-    screens_with_cloud = sum(1 for screen in screens if screen.get("screenshot"))
-    screens_with_local = sum(1 for screen in screens if screen.get("localScreenshot"))
-    screens_with_trees = sum(1 for screen in screens if screen.get("tree"))
     return {
-        "directory": str(design),
+        "directory": str(root),
         "summary": {
             "pages": len(pages),
             "screens": len(screens),
+            "trees": trees_with,
             "components": len(components),
             "componentSets": len(component_sets),
             "variables": len(variables.get("variables") or []),
@@ -269,9 +183,7 @@ def info(directory: str | Path | None = None) -> dict[str, Any]:
             "effects": len(effects),
             "assets": len(assets),
             "uniqueTextStrings": sum(len(items) for items in text.values()),
-            "trees": screens_with_trees,
-            "localScreenshots": screens_with_local,
-            "cloudScreenshots": screens_with_cloud,
+            "suggestedRoutes": len((ui_flow.get("suggestedRoutes") or [])),
         },
         "pages": pages,
         "screens": screens,
@@ -284,22 +196,26 @@ def info(directory: str | Path | None = None) -> dict[str, Any]:
         },
         "assets": assets,
         "text": text,
-        "screenshotManifest": screenshot_manifest or None,
-        "localScreenshotManifest": local_shot_manifest or None,
+        "uiFlow": ui_flow or None,
     }
 
 
-def resolve_design_dir(directory: str | Path | None = None) -> Path:
-    """Resolve an extraction root or ``design/`` path to the design directory."""
+def resolve_output_dir(directory: str | Path | None = None) -> Path:
+    """Resolve an extraction directory (root or legacy ``design/``)."""
     base = Path(directory or Path.cwd()).expanduser().resolve()
-    if (base / "design").is_dir():
-        return base / "design"
-    if (base / "screens.json").is_file():
+    if (base / "pages.json").is_file() or (base / "screens.json").is_file():
         return base
+    legacy = base / "design"
+    if (legacy / "pages.json").is_file() or (legacy / "screens.json").is_file():
+        return legacy
     raise FileNotFoundError(
         f"No extraction found at {base}. "
-        f"Expected {base / 'design' / 'screens.json'} or {base / 'screens.json'}."
+        f"Expected {base / 'pages.json'} (or legacy {legacy / 'pages.json'})."
     )
+
+
+# Backward-compatible alias.
+resolve_design_dir = resolve_output_dir
 
 
 def _extract_local(file: str | Path, output_path: Path) -> tuple[str, str, dict[str, Any]]:

@@ -1,4 +1,4 @@
-"""Build ``design/tokens``: CSS variables, colour styles, typography, effects."""
+"""Build ``tokens/``: CSS variables, colour styles, typography, effects."""
 
 from __future__ import annotations
 

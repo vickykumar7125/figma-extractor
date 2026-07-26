@@ -9,31 +9,35 @@ Extract design tokens, screens, components, and image assets from Figma.
 
 Supports:
 
-- local `.fig` archives (offline kiwi decode)
+- local `.fig` archives (offline kiwi decode — no Figma account needed)
 - remote Figma files via the REST API
-- local screen PNG rebuild from extracted `design/` trees (no Figma API / no AI)
-- component instance expansion and decoded vector outlines, so rebuilt screens
-  contain real buttons, inputs, cards, and icons
-- automatic split of multi-UI boards (e.g. Auth - Branded → Sign In / Sign Up / …)
-  so each PNG is one interface
-- fresh rebuilds: each `extract` wipes previous `design/` + `screenshot/` under the
-  output directory (disable with `--no-clean`)
+- design tokens: colour styles, variables, typography, effects, plus a `tokens.css` bundle
+- **per-screen layout trees** (`trees/`) with auto-layout, fills, text, and expanded
+  component instances — enough for an LLM to rebuild HTML without screenshots
+- **UI flow index** (`ui-flow.json` + `LLM.md`): roles, regions, sample copy, suggested routes
+- structure: pages, screens, components, variant sets, and unique text content
+- image assets exported with a manifest
+- fresh rebuilds: each `extract` wipes previous deliverables under the output
+  directory (disable with `--no-clean`)
+- after extract, temporary `source/` and `extracted/` are removed by default
+  (`--keep-intermediates` to retain them)
+
+This package extracts design *data* for LLM / tooling consumption. It does not
+render or generate screen images.
 
 ## Install
 
-Python 3.11+ required. Local screen rebuild needs a Chromium binary via Playwright.
+Python 3.11+ required.
 
 ```bash
 # from the package directory (contains pyproject.toml)
 pip install .
-playwright install chromium
 ```
 
 Editable install for development:
 
 ```bash
 pip install -e .
-playwright install chromium
 ```
 
 The `figma-extractor` console script is registered on install. Runtime
@@ -43,25 +47,16 @@ for pinned environments (`pip install -r requirements.txt`).
 ## CLI
 
 ```bash
-# local .fig → extract design/ and rebuild one PNG per UI screen into out/screenshot/
-figma-extractor extract --file ./design.fig --output ./out --render
+# local .fig → extract flat into ./out/
+figma-extractor extract --file ./design.fig --output ./out
 
 # remote file (URL or file key) — needs a Figma token
 figma-extractor extract --remote https://www.figma.com/design/ABC123/My-Kit \
   --output ./out --api-key figd_xxx        # or set FIGMA_API_KEY
 
-# useful extract flags
-#   --render-scale 2       high-DPI PNGs
-#   --render-limit 5       only first N screens (quick test)
-#   --render-page Auth     only screens from one Figma page
-#   --no-clean             keep previous design/ + screenshot/ instead of wiping
-
-# rebuild screenshots later from an existing extract (no Figma API)
-figma-extractor render --dir ./out
-figma-extractor render --dir ./out --page Dashboards --limit 5 --scale 2
-
-# optional: pull exact cloud PNGs via the Figma Images API
-figma-extractor screenshots --dir ./out --file-key ABC123 --api-key figd_xxx
+# extract flags
+#   --no-clean             keep previous tokens/assets/JSON instead of wiping
+#   --keep-intermediates   keep temporary source/ and extracted/ folders
 
 # inspect a previous run
 figma-extractor info --dir ./out          # summary table
@@ -71,53 +66,47 @@ figma-extractor info --dir ./out --json   # full JSON
 ## Python API
 
 ```python
-from figma_extractor import extract, info, render, export_screenshots
+from figma_extractor import extract, info
 
-# local extract + local PNG rebuild
-extract(file="./design.fig", output="./out", render=True)
+# local extract
+extract(file="./design.fig", output="./out")
 
 # remote extract
-extract(remote="ABC123", output="./out", api_key="figd_xxx", render=True)
-
-# rebuild screenshots from an existing extract
-render("./out", scale=2, page="Dashboards")
-
-# optional cloud renders (Figma Images API)
-export_screenshots("./out", file_key="ABC123", api_key="figd_xxx")
+extract(remote="ABC123", output="./out", api_key="figd_xxx")
 
 print(info("./out")["summary"])
 ```
 
 ## Output
 
+Deliverables land at the output root (no nested `design/` folder). Temporary
+`source/` and `extracted/` are deleted after a successful extract unless you
+pass `--keep-intermediates`.
+
 ```
 out/
-├── design/
-│   ├── tokens/
-│   ├── trees/                 per-screen layout trees used for local render
-│   ├── preview/               HTML previews
-│   ├── assets/images/
-│   ├── pages.json
-│   ├── screens.json           includes tree + localScreenshot paths
-│   └── ...
-└── screenshot/                rebuilt screen PNGs (local, from design/)
+├── LLM.md                     how an LLM should use this extract
+├── ui-flow.json               pages → screens, roles, regions, routes
+├── trees/
+│   ├── index.json
+│   └── <page>__<screen>.json  full layout tree (layout/fills/text/instances)
+├── tokens/
+│   ├── tokens.css
+│   └── …
+├── components/
+│   └── index.json             variant-set axes for LLM lookup
+├── assets/
+│   ├── images/
+│   └── manifest.json
+├── structure/<page>.md
+├── pages.json
+├── screens.json               includes tree path, role, regions
+├── components.json
+├── component-sets.json
+├── text-content.json
+├── STRUCTURE.md
+└── COMPONENTS.md
 ```
-
-## Screen trees
-
-`design/trees/<page>__<screen>.json` is the renderable description of one screen:
-
-| Field | Meaning |
-| --- | --- |
-| `w` / `h` / `x` / `y` | size and parent-relative offset |
-| `layout` | `dir`, `gap`, `pad`, `justify`, `align`, `wrap` |
-| `fills` | solid / image / gradient paints |
-| `stroke` | paints, `weight`, `align` |
-| `shadows` | drop, inner, and blur effects |
-| `radius` | single value or four corners |
-| `text` | content, family, size, weight, line height, alignment |
-| `paths` | decoded SVG outlines for vectors and icons |
-| `instanceOf` | master symbol id when the node is an expanded instance |
 
 ## Project layout
 
@@ -127,22 +116,21 @@ figma-extractor/
 ├── requirements.txt
 ├── README.md
 └── src/figma_extractor/
-    ├── api.py          # extract(), info(), render(), export_screenshots()
+    ├── api.py          # extract(), info()
     ├── cli.py          # figma-extractor CLI
-    ├── remote.py       # Figma REST client
+    ├── remote.py       # Figma REST client + document normalizer
     ├── util.py         # JSON / colour helpers
     ├── paths.py        # output paths
-    ├── fig/            # .fig unzip, canvas decode, vector path decode
+    ├── fig/            # .fig unzip and canvas decode
     ├── kiwi/           # kiwi binary schema + decoder
-    └── extract/        # tokens, structure, images, trees, render, screenshots
+    └── extract/        # tokens, structure, images
 ```
 
 ## Notes
 
-- Local screenshots are rebuilt from `design/trees` + tokens + bitmaps via Playwright.
-- Vector outlines come from the `.fig` path blobs, so icons render as real shapes.
-- Component instances are expanded from their master symbol, including per-instance
-  geometry overrides.
-- Fonts are not embedded in a `.fig`; install the design's families locally for exact
-  typography, otherwise a metric-compatible fallback is used.
-- Optional cloud screenshots (`--screenshots`) still exist but require a Figma API key.
+- A `.fig` archive is decoded locally through the embedded kiwi schema, so local
+  extraction works fully offline.
+- Remote files are normalized into the same node stream as local `.fig` files, so
+  the token / structure / image builders are shared across both sources.
+- Fonts are not embedded in a `.fig`; typography tokens record family, style, size,
+  line height, and letter spacing rather than font binaries.

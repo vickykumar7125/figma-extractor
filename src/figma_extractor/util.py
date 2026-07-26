@@ -69,12 +69,7 @@ def font_weight_from_name(
     fallback: int | None = None,
     family: str | None = None,
 ) -> int:
-    """
-    Map a Figma font style / family token to a CSS weight.
-
-    Uses word-boundary matching so ``Highlight`` does not become weight 300.
-    Family names like ``Gilroy-Bold`` are checked when style is empty.
-    """
+    """Map a Figma font style / family token to a CSS weight."""
     for source in (style or "", family or ""):
         lowered = source.lower().replace(" ", "")
         match = _WEIGHT_RE.search(lowered)
