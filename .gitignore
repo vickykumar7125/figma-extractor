@@ -1,0 +1,15 @@
+# Temporary extract caches
+source/
+extracted/
+
+# Packaging
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+.venv/
+*.pyc
+.DS_Store
