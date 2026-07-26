@@ -1,4 +1,9 @@
-"""Export image assets with real extensions and a usage manifest."""
+"""Export image assets with real extensions and a usage manifest.
+
+Images usually live in ``source/images/`` (ZIP ``.fig`` archives). Bare
+``fig-kiwi`` files embed the same bytes in decoded blobs, referenced from paints
+via ``image.hash`` + ``image.dataBlob``.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +11,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import orjson
 from PIL import Image
 from rich.console import Console
 
-from figma_extractor.paths import design_dir, nodes_path, require_dir, require_file, source_dir
+from figma_extractor.paths import design_dir, extracted_dir, nodes_path, require_file, source_dir
 from figma_extractor.util import gid, iter_ndjson, write_json
 
 console = Console(stderr=True)
@@ -43,19 +49,13 @@ def _dimensions(path: Path, ext: str) -> dict[str, int] | None:
         return None
 
 
-def build_images(out: Path) -> dict[str, Any]:
-    nodes_file = require_file(
-        nodes_path(out),
-        "Decoded nodes not found. Run figma-extractor extract first.",
-    )
-    images_src = require_dir(
-        source_dir(out) / "images",
-        "Decoded nodes not found. Run figma-extractor extract first.",
-    )
-
+def _collect_image_refs(nodes_file: Path) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
+    """Return (usage_by_hash, hash → preferred dataBlob index)."""
     usage: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    hash_to_blob: dict[str, int] = {}
+
     for node in iter_ndjson(nodes_file):
-        paints = []
+        paints: list[dict[str, Any]] = []
         paints.extend(node.get("fillPaints") or [])
         paints.extend(node.get("strokePaints") or [])
         paints.extend(node.get("backgroundPaints") or [])
@@ -72,6 +72,75 @@ def build_images(out: Path) -> dict[str, Any]:
                     "scaleMode": paint.get("imageScaleMode"),
                 }
             )
+            blob = image.get("dataBlob")
+            if isinstance(blob, int) and hash_name not in hash_to_blob:
+                hash_to_blob[hash_name] = blob
+
+            thumb = paint.get("imageThumbnail") or {}
+            thumb_hash = thumb.get("hash")
+            thumb_blob = thumb.get("dataBlob")
+            if (
+                isinstance(thumb_hash, str)
+                and isinstance(thumb_blob, int)
+                and thumb_hash not in hash_to_blob
+            ):
+                hash_to_blob[thumb_hash] = thumb_blob
+
+    return usage, hash_to_blob
+
+
+def _materialize_from_blobs(
+    out: Path,
+    hash_to_blob: dict[str, int],
+    destination: Path,
+) -> int:
+    """Write ``destination/<hash>`` files from extracted blobs. Returns count written."""
+    index_path = extracted_dir(out) / "blobs-index.json"
+    blobs_path = extracted_dir(out) / "blobs.bin"
+    if not index_path.is_file() or not blobs_path.is_file():
+        return 0
+
+    blob_index = orjson.loads(index_path.read_bytes())
+    if not isinstance(blob_index, list):
+        return 0
+
+    destination.mkdir(parents=True, exist_ok=True)
+    blobs = blobs_path.read_bytes()
+    written = 0
+    for hash_name, blob_i in hash_to_blob.items():
+        if blob_i < 0 or blob_i >= len(blob_index):
+            continue
+        entry = blob_index[blob_i]
+        offset = int(entry.get("offset", 0))
+        length = int(entry.get("length", 0))
+        if length <= 0:
+            continue
+        dest = destination / hash_name
+        if dest.is_file():
+            continue
+        dest.write_bytes(blobs[offset : offset + length])
+        written += 1
+    return written
+
+
+def build_images(out: Path) -> dict[str, Any]:
+    nodes_file = require_file(
+        nodes_path(out),
+        "Decoded nodes not found. Run figma-extractor extract first.",
+    )
+    usage, hash_to_blob = _collect_image_refs(nodes_file)
+
+    images_src = source_dir(out) / "images"
+    if not images_src.is_dir():
+        images_src.mkdir(parents=True, exist_ok=True)
+
+    # Prefer ZIP-extracted files; fill gaps from embedded kiwi blobs.
+    existing = {p.name for p in images_src.iterdir() if p.is_file() and not p.name.startswith(".")}
+    missing = {h: i for h, i in hash_to_blob.items() if h not in existing}
+    if missing:
+        n = _materialize_from_blobs(out, missing, images_src)
+        if n:
+            console.print(f"[cyan]Images[/] materialized {n} from blobs → {images_src}")
 
     out_images = design_dir(out) / "assets" / "images"
     out_images.mkdir(parents=True, exist_ok=True)

@@ -68,9 +68,49 @@ class FigmaClient:
         return response.json()
 
     def get_images(self, file_key: str) -> dict[str, str]:
+        """Fill-image asset map (hash → download URL), not node screenshots."""
         response = self._client.get(f"/files/{file_key}/images")
         self._raise(response)
         return (response.json().get("meta") or {}).get("images") or {}
+
+    def render_nodes(
+        self,
+        file_key: str,
+        node_ids: list[str],
+        *,
+        format: str = "png",
+        scale: float = 1.0,
+        use_absolute_bounds: bool = True,
+    ) -> dict[str, str | None]:
+        """
+        Render document nodes via ``GET /v1/images/:file_key``.
+
+        Returns a map of node id → temporary download URL (or ``None`` when
+        Figma could not render that node).
+        """
+        if not node_ids:
+            return {}
+        fmt = format.lower().strip()
+        if fmt not in {"png", "jpg", "svg", "pdf"}:
+            raise ValueError(f"Unsupported screenshot format: {format!r}")
+        if not 0.01 <= scale <= 4.0:
+            raise ValueError("Screenshot scale must be between 0.01 and 4.0")
+
+        response = self._client.get(
+            f"/images/{file_key}",
+            params={
+                "ids": ",".join(node_ids),
+                "format": fmt,
+                "scale": scale,
+                "use_absolute_bounds": str(use_absolute_bounds).lower(),
+            },
+        )
+        self._raise(response)
+        payload = response.json()
+        if payload.get("err"):
+            raise RuntimeError(f"Figma images API error: {payload['err']}")
+        images = payload.get("images") or {}
+        return {str(node_id): images.get(node_id) for node_id in node_ids}
 
     @staticmethod
     def _raise(response: httpx.Response) -> None:
@@ -87,16 +127,28 @@ def normalize_remote_document(payload: dict[str, Any], out_dir: Path) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     components = payload.get("components") or {}
     count = 0
-    stack: list[tuple[dict[str, Any], str | None, int]] = [(payload["document"], None, 0)]
+    # (node, parent_id, position, parent_abs_xy)
+    stack: list[tuple[dict[str, Any], str | None, int, tuple[float, float] | None]] = [
+        (payload["document"], None, 0, None)
+    ]
 
     with (out_dir / "nodes.ndjson").open("w", encoding="utf-8", buffering=8 << 20) as handle:
         while stack:
-            node, parent_id, position = stack.pop()
-            handle.write(to_ndjson_line(_normalize_node(node, parent_id, position, components)) + "\n")
+            node, parent_id, position, parent_abs = stack.pop()
+            handle.write(
+                to_ndjson_line(
+                    _normalize_node(
+                        node, parent_id, position, components, parent_abs=parent_abs
+                    )
+                )
+                + "\n"
+            )
             count += 1
+            bounds = node.get("absoluteBoundingBox") or {}
+            abs_xy = (float(bounds.get("x") or 0), float(bounds.get("y") or 0))
             children = node.get("children") or []
             for index in range(len(children) - 1, -1, -1):
-                stack.append((children[index], str(node.get("id")), index))
+                stack.append((children[index], str(node.get("id")), index, abs_xy))
 
     write_json(
         out_dir / "document-meta.json",
@@ -147,7 +199,9 @@ def _paint(paint: dict[str, Any]) -> dict[str, Any]:
         "blendMode": paint.get("blendMode", "NORMAL"),
     }
     if paint.get("color"):
-        result["color"] = {**paint["color"], "a": paint.get("opacity", 1)}
+        # Keep colour-channel alpha separate from paint opacity so trees'
+        # to_css_color(color, paint.opacity) does not double-multiply.
+        result["color"] = dict(paint["color"])
     if paint.get("imageRef"):
         result["image"] = {"hash": paint["imageRef"]}
         result["imageScaleMode"] = paint.get("scaleMode")
@@ -164,6 +218,8 @@ def _normalize_node(
     parent_id: str | None,
     position: int,
     components: dict[str, Any],
+    *,
+    parent_abs: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     node_id = str(node.get("id", "0:0"))
     node_type = node.get("type")
@@ -175,6 +231,14 @@ def _normalize_node(
     bounds = node.get("absoluteBoundingBox") or node.get("size") or {}
     style = node.get("style") or {}
     component_meta = components.get(node_id) or {}
+    abs_x = float(bounds.get("x") or 0)
+    abs_y = float(bounds.get("y") or 0)
+    if parent_abs is not None:
+        local_x = abs_x - parent_abs[0]
+        local_y = abs_y - parent_abs[1]
+    else:
+        local_x = 0.0
+        local_y = 0.0
 
     result: dict[str, Any] = {
         "guid": _guid(node_id),
@@ -187,10 +251,10 @@ def _normalize_node(
         "transform": {
             "m00": 1,
             "m01": 0,
-            "m02": bounds.get("x", 0),
+            "m02": local_x,
             "m10": 0,
             "m11": 1,
-            "m12": bounds.get("y", 0),
+            "m12": local_y,
         },
     }
     if parent_id:

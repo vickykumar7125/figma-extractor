@@ -63,7 +63,8 @@ def _letter_spacing_css(ls: dict[str, Any] | None) -> str:
         return "0"
     if ls.get("units") == "PIXELS":
         return f"{round_num(ls['value'])}px"
-    return f"{round_num(ls['value'], 3)}em"
+    # Figma PERCENT letter-spacing is percent-of-em (100 → 1em).
+    return f"{round_num(float(ls['value']) / 100.0, 4)}em"
 
 
 def _effect_to_css(effect: dict[str, Any]) -> Any:

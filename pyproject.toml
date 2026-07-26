@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "figma-extractor"
-version = "1.1.0"
+version = "1.8.1"
 description = "Extract design tokens, screens, components, and assets from local or remote Figma files"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,6 +18,7 @@ dependencies = [
   "zstandard>=0.23",
   "Pillow>=11",
   "httpx>=0.27",
+  "playwright>=1.40",
 ]
 
 [project.optional-dependencies]

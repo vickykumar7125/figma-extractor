@@ -145,7 +145,13 @@ def build_structure(out: Path) -> dict[str, Any]:
     screens = []
     for canvas in canvases:
         for child in _children_of(child_ids, nodes, canvas["id"]):
-            if child["type"] not in ("FRAME", "SECTION"):
+            # Kits vary: pages may be FRAME, SECTION, or a large top-level INSTANCE.
+            if child["type"] not in ("FRAME", "SECTION", "INSTANCE", "COMPONENT"):
+                continue
+            width = child.get("w") or 0
+            height = child.get("h") or 0
+            # Skip tiny page decorations that are not screens.
+            if child["type"] in ("INSTANCE", "COMPONENT") and (width < 320 or height < 320):
                 continue
             stats = _subtree_stats(child_ids, nodes, child["id"])
             screens.append(

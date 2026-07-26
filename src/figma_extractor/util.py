@@ -10,13 +10,39 @@ import orjson
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _ASCII_RE = re.compile(r"[^\x20-\x7E]+")
+# Longest tokens first so "extralight" wins over "light", "semibold" over "bold".
+_WEIGHT_TOKENS: tuple[tuple[str, int], ...] = (
+    ("extralight", 200),
+    ("ultralight", 200),
+    ("extrabold", 800),
+    ("ultrabold", 800),
+    ("semibold", 600),
+    ("demibold", 600),
+    ("thin", 100),
+    ("light", 300),
+    ("regular", 400),
+    ("book", 400),
+    ("medium", 500),
+    ("black", 900),
+    ("heavy", 900),
+    ("bold", 700),
+)
+_WEIGHT_RE = re.compile(
+    r"(?<![a-z])(" + "|".join(re.escape(token) for token, _ in _WEIGHT_TOKENS) + r")(?![a-z])",
+    re.I,
+)
+_WEIGHT_LOOKUP = dict(_WEIGHT_TOKENS)
 
 
 def gid(guid: dict[str, Any] | None) -> str | None:
     """Format a Figma GUID as ``sessionID:localID``."""
-    if not guid:
+    if not guid or not isinstance(guid, dict):
         return None
-    return f"{guid['sessionID']}:{guid['localID']}"
+    session = guid.get("sessionID")
+    local = guid.get("localID")
+    if session is None or local is None:
+        return None
+    return f"{session}:{local}"
 
 
 def slug(text: str) -> str:
@@ -25,6 +51,43 @@ def slug(text: str) -> str:
 
 def ascii_name(text: str) -> str:
     return _ASCII_RE.sub("", text).strip() or text
+
+
+def unique_slug(base: str, used: set[str]) -> str:
+    """Return ``base`` or ``base-2``, ``base-3``, … and record it in ``used``."""
+    candidate = base
+    suffix = 2
+    while candidate in used:
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    used.add(candidate)
+    return candidate
+
+
+def font_weight_from_name(
+    style: str | None = None,
+    fallback: int | None = None,
+    family: str | None = None,
+) -> int:
+    """
+    Map a Figma font style / family token to a CSS weight.
+
+    Uses word-boundary matching so ``Highlight`` does not become weight 300.
+    Family names like ``Gilroy-Bold`` are checked when style is empty.
+    """
+    for source in (style or "", family or ""):
+        lowered = source.lower().replace(" ", "")
+        match = _WEIGHT_RE.search(lowered)
+        if match:
+            return _WEIGHT_LOOKUP[match.group(1).lower()]
+    return int(fallback) if fallback else 400
+
+
+def first_solid_fill(fills: list[dict[str, Any]] | None) -> str | None:
+    for fill in fills or []:
+        if fill.get("type") == "solid" and fill.get("color"):
+            return str(fill["color"])
+    return None
 
 
 def clamp255(value: float) -> int:
