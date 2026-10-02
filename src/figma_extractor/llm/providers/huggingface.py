@@ -1,56 +1,46 @@
-"""Hugging Face endpoint or a local transformers pipeline.
+"""Local Hugging Face Transformers, with optional hosted inference.
 
-``provider_options['backend']`` is ``endpoint`` (default) or ``local``.
-Local inference imports transformers and torch when the session is built.
-It is not imported for an endpoint session, and never during extract.
+``HF_BACKEND=local`` is the default. It loads ``HuggingFacePipeline`` from a
+directory and wraps it in ``ChatHuggingFace``. ``HF_BACKEND=remote`` (also
+accepted as ``endpoint``) uses ``HuggingFaceEndpoint`` and a Hub token.
+
+Extract never imports this module.
 """
 
 from __future__ import annotations
 
 from figma_extractor.llm.chat import LangChainSession
 from figma_extractor.llm.config import LlmConfig
-from figma_extractor.llm.errors import LlmConfigError, MissingProviderPackage
+from figma_extractor.llm.errors import MissingProviderPackage
 from figma_extractor.llm.factory import load_class
+from figma_extractor.llm.huggingface_local import load_pipeline, settings_for
+from figma_extractor.llm.huggingface_settings import HuggingFaceSettings
 from figma_extractor.llm.registry import ProviderSpec, get_provider
 
 
 def build(config: LlmConfig) -> LangChainSession:
     spec = get_provider("huggingface")
-    backend = config.provider_options.get("backend", "endpoint")
+    settings = settings_for(config)
     chat_cls = load_class("langchain_huggingface", "ChatHuggingFace", spec)
-    if backend == "local":
-        llm = local_pipeline(config, spec)
-    elif backend == "endpoint":
-        llm = hosted_endpoint(config, spec)
+    if settings.backend == "local":
+        pipeline_cls = load_class("langchain_huggingface", "HuggingFacePipeline", spec)
+        llm = load_pipeline(config, pipeline_cls)
     else:
-        raise LlmConfigError("huggingface backend must be 'endpoint' or 'local'.")
+        llm = hosted_endpoint(config, settings, spec)
     return LangChainSession(chat_cls(llm=llm), config)
 
 
-def hosted_endpoint(config: LlmConfig, spec: ProviderSpec) -> object:
+def hosted_endpoint(config: LlmConfig, settings: HuggingFaceSettings, spec: ProviderSpec) -> object:
     endpoint_cls = load_class("langchain_huggingface", "HuggingFaceEndpoint", spec)
-    return endpoint_cls(
-        repo_id=config.resolved_model(),
-        task="text-generation",
-        max_new_tokens=config.max_tokens or 512,
-        temperature=config.temperature,
-    )
-
-
-def local_pipeline(config: LlmConfig, spec: ProviderSpec) -> object:
+    kwargs = {
+        "repo_id": config.resolved_model(),
+        "task": settings.task,
+        "max_new_tokens": settings.max_new_tokens or config.max_tokens or 512,
+        "temperature": config.temperature,
+        "do_sample": bool(settings.do_sample),
+        "repetition_penalty": settings.repetition_penalty,
+    }
     try:
-        pipeline_cls = load_class("langchain_huggingface", "HuggingFacePipeline", spec)
-    except MissingProviderPackage:
-        raise
-    try:
-        return pipeline_cls.from_model_id(
-            model_id=config.resolved_model(),
-            task="text-generation",
-            pipeline_kwargs={"max_new_tokens": config.max_tokens or 512},
-        )
+        return endpoint_cls(**kwargs)
     except ImportError as exc:
-        raise MissingProviderPackage(
-            "huggingface",
-            "transformers (and a torch build from requirements/torch/)",
-            "huggingface",
-        ) from exc
+        raise MissingProviderPackage("huggingface", "langchain-huggingface", "huggingface") from exc

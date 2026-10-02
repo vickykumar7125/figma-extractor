@@ -1,4 +1,5 @@
-# Hosted Hugging Face inference. A local pipeline also needs transformers
-# and one torch profile from requirements/torch/, installed as a second command.
+# Hugging Face chat integration. Local execution also needs huggingface-local.txt
+# and one requirements/torch file. Remote execution (HF_BACKEND=remote) uses this
+# file plus HF_TOKEN or HUGGINGFACEHUB_API_TOKEN.
 -r ../llm.txt
 langchain-huggingface>=1.2,<2

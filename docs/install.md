@@ -38,7 +38,7 @@ python setup.py --dry-run
 
 | Flag | Effect |
 | --- | --- |
-| *(none)* | Core package, every LLM provider extra (`all-llm`), and the matching torch profile |
+| *(none)* | Core package, every LLM provider extra (`all-llm`), the matching torch profile, `huggingface-local.txt`, and on CUDA also `huggingface-quant.txt` |
 | `--core` | Extraction only, same result as `pip install -e .` |
 | `--no-llm` | Skip LangChain and provider packages |
 | `--no-torch` | Skip PyTorch and torchvision |
@@ -65,8 +65,11 @@ pip install -e ".[openai]"          # also: anthropic, google, vertex, ollama,
                                     # huggingface, groq, xai, nvidia, cohere,
                                     # together, deepseek
 pip install -e ".[llm]"             # LangGraph runtime, no chat provider
-pip install -e ".[all-llm]"         # every provider extra
+pip install -e ".[all-llm]"         # every chat provider, no Transformers or torch
+pip install -e ".[huggingface-local]"
+pip install -e ".[huggingface-quant]"   # NVIDIA CUDA bitsandbytes
 pip install -r requirements/torch/cuda.txt
+pip install -r requirements/providers/huggingface-local.txt
 ```
 
 The same provider lists are under `requirements/providers/`.
@@ -81,7 +84,7 @@ Credentials stay in the environment. They are not accepted in JSON config files.
 | `vertex` | `vertex` | `GOOGLE_CLOUD_PROJECT` and Application Default Credentials |
 | `anthropic-vertex` | `vertex` | `GOOGLE_CLOUD_PROJECT` and Application Default Credentials |
 | `ollama` | `ollama` | none (`OLLAMA_BASE_URL` optional) |
-| `huggingface` | `huggingface` | `HF_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` (not required when `backend=local`) |
+| `huggingface` | `huggingface` | `HF_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` only for `HF_BACKEND=remote` |
 | `groq` | `groq` | `GROQ_API_KEY` |
 | `xai` | `xai` | `XAI_API_KEY` |
 | `nvidia` | `nvidia` | `NVIDIA_API_KEY` |
@@ -89,7 +92,7 @@ Credentials stay in the environment. They are not accepted in JSON config files.
 | `together` | `together` | `TOGETHER_API_KEY` |
 | `deepseek` | `deepseek` | `DEEPSEEK_API_KEY` |
 
-`anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI. Local Hugging Face inference (`backend=local`) also needs the torch profile `setup.py` selected, plus `transformers`.
+`anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI. Local Hugging Face execution is the default for that provider. It needs `.[huggingface-local]`, a `requirements/torch/` profile, and `HF_LOCAL_MODEL_PATH`. 4-bit and 8-bit additionally need `.[huggingface-quant]` and NVIDIA CUDA. See [Hugging Face local](huggingface.md).
 
 Default model when `--llm-model` and `LLM_MODEL` are omitted:
 
@@ -101,7 +104,7 @@ Default model when `--llm-model` and `LLM_MODEL` are omitted:
 | `vertex` | `gemini-2.5-flash` |
 | `anthropic-vertex` | `claude-haiku-4-5@20251001` |
 | `ollama` | `llama3.2` |
-| `huggingface` | `microsoft/Phi-3-mini-4k-instruct` |
+| `huggingface` | local: `HF_LOCAL_MODEL_PATH`. Remote: `microsoft/Phi-3-mini-4k-instruct` |
 | `groq` | `llama-3.3-70b-versatile` |
 | `xai` | `grok-3` |
 | `nvidia` | `meta/llama-3.1-70b-instruct` |

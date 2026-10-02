@@ -20,3 +20,11 @@ site/
 # IDE
 .idea/
 .vscode/
+
+# Local model weights. Keep Hub downloads out of git.
+models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+.env

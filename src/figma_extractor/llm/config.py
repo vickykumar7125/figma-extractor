@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from figma_extractor.llm.errors import LlmConfigError, UnknownProvider
+from figma_extractor.llm.huggingface_settings import merge_into_config_data
 from figma_extractor.llm.policy import ExecutionPolicy
 from figma_extractor.llm.registry import get_provider
 
@@ -148,6 +149,7 @@ class LlmConfig:
         if path is not None:
             data.update(read_config_file(Path(path)))
         data.update(environment_config())
+        overrides = merge_into_config_data(data, overrides)
         if overrides:
             data.update({key: value for key, value in overrides.items() if value is not None})
         reject_secret_fields(data)

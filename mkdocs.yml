@@ -36,6 +36,7 @@ nav:
   - CLI: cli.md
   - Usage: usage.md
   - Annotation: annotate.md
+  - Hugging Face local: huggingface.md
   - Python API: python-api.md
   - Output: output.md
   - Project layout: layout.md

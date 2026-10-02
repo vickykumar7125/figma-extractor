@@ -9,7 +9,7 @@ Extract design tokens, screens, components, and image assets from Figma.
 | Max-feature installer | `python setup.py` |
 | Docs | this site |
 
-Commands: `extract`, `info`, `annotate`, `devices`. Flag tables are on the [CLI](cli.md) page. Function signatures and return values are on the [Python API](python-api.md) page.
+Commands: `extract`, `info`, `annotate`, `devices`, `model validate`, `model download`. Flag tables are on the [CLI](cli.md) page. Local Hugging Face models are on the [Hugging Face local](huggingface.md) page. Function signatures and return values are on the [Python API](python-api.md) page.
 
 The default install extracts design data and does not install an LLM provider or PyTorch. `setup.py` detects this machine and installs the richest compatible profile on top of that core.
 
@@ -23,6 +23,7 @@ The default install extracts design data and does not install an LLM provider or
 - Structure: pages, screens, components, variant sets, and unique text content
 - Image assets exported with a manifest
 - Optional annotation (`llm-annotations.json`) when an LLM extra is installed and explicitly enabled
+- Optional local Hugging Face models (`HF_BACKEND=local`, the default for that provider), with remote Hub inference only when `HF_BACKEND=remote`
 - Fresh rebuilds: each `extract` wipes previous deliverables under the output directory (disable with `--no-clean`)
 - Temporary `source/` and `extracted/` removed after extract (`--keep-intermediates` to retain them)
 

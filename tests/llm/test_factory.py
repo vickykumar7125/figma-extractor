@@ -67,6 +67,7 @@ def test_local_huggingface_skips_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACEHUB_API_TOKEN", raising=False)
     require_credentials(get_provider("huggingface"), enabled("huggingface", backend="local"))
+    require_credentials(get_provider("huggingface"), enabled("huggingface"))
 
 
 def test_streaming_rejected_for_huggingface() -> None:

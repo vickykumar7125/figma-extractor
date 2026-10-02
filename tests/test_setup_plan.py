@@ -44,9 +44,11 @@ def test_plan_commands_keep_torch_in_a_second_pip_call(monkeypatch) -> None:
     monkeypatch.setattr(setup, "detect_accelerator", lambda system, machine: "cuda")
     plan = setup.build_plan(include_llm=True, include_torch=True)
     commands = setup.pip_commands(plan)
-    assert len(commands) == 2
+    assert len(commands) == 4
     assert commands[0][-1] == ".[all-llm]"
     assert str(commands[1][-1]).endswith("cuda.txt")
+    assert str(commands[2][-1]).endswith("huggingface-local.txt")
+    assert str(commands[3][-1]).endswith("huggingface-quant.txt")
     assert "--index-url" not in " ".join(commands[0])
 
 

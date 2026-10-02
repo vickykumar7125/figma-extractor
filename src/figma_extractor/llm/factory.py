@@ -8,12 +8,13 @@ import os
 from figma_extractor.llm.capabilities import Capability, required_for_tasks
 from figma_extractor.llm.chat import ChatSession
 from figma_extractor.llm.config import LlmConfig
-from figma_extractor.llm.errors import MissingCredential, MissingProviderPackage, ProviderCapabilityError
+from figma_extractor.llm.errors import LlmConfigError, MissingCredential, MissingProviderPackage, ProviderCapabilityError
+from figma_extractor.llm.huggingface_settings import ALLOWED_HUGGINGFACE_OPTIONS, normalize_backend
 from figma_extractor.llm.registry import ProviderSpec, get_provider
 
 ALLOWED_OPTIONS: dict[str, frozenset[str]] = {
     "ollama": frozenset({"base_url"}),
-    "huggingface": frozenset({"backend"}),
+    "huggingface": ALLOWED_HUGGINGFACE_OPTIONS,
     "vertex": frozenset({"location"}),
     "anthropic-vertex": frozenset({"location"}),
 }
@@ -31,7 +32,7 @@ def build_session(config: LlmConfig) -> ChatSession:
 
 def require_ready(spec: ProviderSpec, config: LlmConfig) -> None:
     have = set(spec.capabilities)
-    if spec.id == "huggingface" and config.provider_options.get("backend") == "local":
+    if spec.id == "huggingface" and huggingface_is_local(config):
         have.add(Capability.LOCAL_INFERENCE)
     if spec.id == "ollama":
         have.add(Capability.LOCAL_INFERENCE)
@@ -47,7 +48,7 @@ def require_ready(spec: ProviderSpec, config: LlmConfig) -> None:
 
 
 def require_credentials(spec: ProviderSpec, config: LlmConfig) -> None:
-    if spec.id == "huggingface" and config.provider_options.get("backend") == "local":
+    if spec.id == "huggingface" and huggingface_is_local(config):
         return
     if not spec.credential_env:
         return
@@ -64,6 +65,13 @@ def require_credentials(spec: ProviderSpec, config: LlmConfig) -> None:
         f"Provider '{spec.id}' requires {names} to be set.{extra} "
         "The value is read from the environment and is not stored in config."
     )
+
+
+def huggingface_is_local(config: LlmConfig) -> bool:
+    try:
+        return normalize_backend(config.provider_options.get("backend")) == "local"
+    except ValueError as exc:
+        raise LlmConfigError(str(exc)) from exc
 
 
 def reject_unknown_options(spec: ProviderSpec, config: LlmConfig) -> None:

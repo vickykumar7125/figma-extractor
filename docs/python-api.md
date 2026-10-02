@@ -169,7 +169,11 @@ LlmConfig(
     enabled=True,
     provider="huggingface",
     tasks=LlmTasks(screen_classification=True),
-    provider_options={"backend": "local"},
+    provider_options={
+        "backend": "local",
+        "model_path": "/models/Qwen3-0.6B",
+        "quantization": "none",
+    },
 )
 
 LlmConfig(
@@ -183,7 +187,7 @@ LlmConfig(
 | Provider | Allowed `provider_options` | Also read from the environment |
 | --- | --- | --- |
 | `ollama` | `base_url` | `OLLAMA_BASE_URL` |
-| `huggingface` | `backend` = `endpoint` (default) or `local` | `HF_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` skipped when `backend` is `local` |
+| `huggingface` | see [Hugging Face local](huggingface.md). Default backend is `local` | `HF_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` only when `HF_BACKEND=remote` |
 | `vertex` | `location` | `GOOGLE_CLOUD_LOCATION`, default `us-central1` |
 | `anthropic-vertex` | `location` | `GOOGLE_CLOUD_LOCATION`, default `us-east5` |
 | every other provider | none | credential variables only |

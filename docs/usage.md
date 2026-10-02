@@ -52,5 +52,26 @@ python -m figma_extractor extract -f ./design.fig -o ./out
 python -m figma_extractor info -d ./out --json
 python -m figma_extractor annotate -d ./out --llm-disabled
 python -m figma_extractor devices
+python -m figma_extractor model validate --path /models/Qwen3-0.6B
 python -m figma_extractor --version
 ```
+
+## Local Hugging Face model
+
+Download once, validate the directory, then annotate. The annotation does not download weights.
+
+```bash
+figma-extractor model download Qwen/Qwen3-0.6B --dest /models/Qwen3-0.6B
+figma-extractor model validate --path /models/Qwen3-0.6B
+
+export HF_BACKEND=local
+export HF_LOCAL_MODEL_PATH=/models/Qwen3-0.6B
+export HF_QUANTIZATION=none
+
+figma-extractor annotate --dir ./out \
+  --llm \
+  --llm-provider huggingface \
+  --llm-task screen_classification
+```
+
+Settings, quantization, and the CUDA-only 4-bit and 8-bit install are on the [Hugging Face local](huggingface.md) page.

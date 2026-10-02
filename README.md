@@ -27,7 +27,7 @@ Supports today:
 
 This package does not render screenshots. HTML generation from an extract is an upcoming feature, described at the end of this file.
 
-Commands: `extract`, `info`, `annotate`, `devices`. `--version` / `-V` prints the package version.
+Commands: `extract`, `info`, `annotate`, `devices`, `model validate`, `model download`. `--version` / `-V` prints the package version.
 
 ## Install
 
@@ -69,7 +69,7 @@ The installer prints the detected OS, CPU architecture, accelerator, and the pip
 
 | Flag | Effect |
 | --- | --- |
-| *(none)* | Core package, every LLM provider extra (`all-llm`), and the matching torch profile |
+| *(none)* | Core package, every LLM provider extra (`all-llm`), the matching torch profile, and the local Hugging Face files (`huggingface-local.txt`; `huggingface-quant.txt` when CUDA is detected) |
 | `--core` | Extraction only, same result as `pip install -e .` |
 | `--no-llm` | Skip LangChain and provider packages |
 | `--no-torch` | Skip PyTorch and torchvision |
@@ -96,8 +96,11 @@ pip install -e ".[openai]"          # also: anthropic, google, vertex, ollama,
                                     # huggingface, groq, xai, nvidia, cohere,
                                     # together, deepseek
 pip install -e ".[llm]"             # LangGraph runtime, no chat provider
-pip install -e ".[all-llm]"         # every provider extra
+pip install -e ".[all-llm]"         # every chat provider, no Transformers or torch
+pip install -e ".[huggingface-local]"   # ChatHuggingFace plus transformers and accelerate
+pip install -e ".[huggingface-quant]"   # local extra plus bitsandbytes (NVIDIA CUDA)
 pip install -r requirements/torch/cuda.txt
+pip install -r requirements/providers/huggingface-local.txt
 ```
 
 The same provider lists are under `requirements/providers/`.
@@ -112,7 +115,7 @@ Credentials stay in the environment. They are not accepted in JSON config files.
 | `vertex` | `vertex` | `GOOGLE_CLOUD_PROJECT` and Application Default Credentials | `gemini-2.5-flash` |
 | `anthropic-vertex` | `vertex` | `GOOGLE_CLOUD_PROJECT` and Application Default Credentials | `claude-haiku-4-5@20251001` |
 | `ollama` | `ollama` | none (`OLLAMA_BASE_URL` optional) | `llama3.2` |
-| `huggingface` | `huggingface` | `HF_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` (not required when `backend=local`) | `microsoft/Phi-3-mini-4k-instruct` |
+| `huggingface` | `huggingface` for remote; `huggingface-local` for files on disk; `huggingface-quant` for 4-bit and 8-bit on CUDA | `HF_TOKEN` or `HUGGINGFACEHUB_API_TOKEN` only when `HF_BACKEND=remote` | `HF_LOCAL_MODEL_PATH` locally. Remote default is `microsoft/Phi-3-mini-4k-instruct` |
 | `groq` | `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
 | `xai` | `xai` | `XAI_API_KEY` | `grok-3` |
 | `nvidia` | `nvidia` | `NVIDIA_API_KEY` | `meta/llama-3.1-70b-instruct` |
@@ -120,9 +123,42 @@ Credentials stay in the environment. They are not accepted in JSON config files.
 | `together` | `together` | `TOGETHER_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
 | `deepseek` | `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` |
 
-`anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI. Local Hugging Face inference (`backend=local`) also needs the torch profile `setup.py` selected, plus `transformers`.
+`anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI.
 
-Provider options accepted in config (`provider_options`): `ollama` takes `base_url`; `huggingface` takes `backend` (`endpoint` or `local`); `vertex` and `anthropic-vertex` take `location`. Gemini on Vertex defaults to `us-central1`. Claude on Vertex defaults to `us-east5`. Both honour `GOOGLE_CLOUD_LOCATION`.
+Provider options: `ollama` takes `base_url`; `vertex` and `anthropic-vertex` take `location`. Gemini on Vertex defaults to `us-central1`. Claude on Vertex defaults to `us-east5`. Both honour `GOOGLE_CLOUD_LOCATION`.
+
+### Hugging Face local models
+
+The default Hugging Face backend is local. `annotate` loads `ChatHuggingFace` from `HuggingFacePipeline` and a directory you already have on disk. It does not download weights. `HF_BACKEND=remote` (the old name `endpoint` still works) is the optional Hub path and needs a token.
+
+```bash
+pip install -e ".[huggingface-local]"
+pip install -r requirements/torch/cuda.txt    # or cpu.txt, macos.txt, rocm.txt, xpu.txt
+
+figma-extractor model download Qwen/Qwen3-0.6B --dest /models/Qwen3-0.6B
+figma-extractor model validate --path /models/Qwen3-0.6B
+```
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HF_BACKEND` | `local` | `local` or `remote` (`endpoint` means `remote`) |
+| `HF_LOCAL_MODEL_PATH` | unset | Directory with `config.json` and weight files |
+| `HF_TASK` | `text-generation` | Causal LM task. Other tasks are rejected |
+| `HF_DEVICE` | `auto` | `auto`, `cpu`, `cuda`, `rocm`, `mps`, or `xpu` |
+| `HF_DEVICE_MAP` | `auto` | Applied on CUDA. A forced CPU device does not use it |
+| `HF_DTYPE` | `auto` | CPU uses float32. CUDA uses bfloat16 when the GPU reports it, otherwise float16 |
+| `HF_QUANTIZATION` | `none` | `none`, `4bit`, or `8bit` |
+| `HF_BNB_4BIT_QUANT_TYPE` | `nf4` | Used only while 4-bit is active |
+| `HF_BNB_4BIT_COMPUTE_DTYPE` | `float16` | 4-bit compute dtype |
+| `HF_BNB_4BIT_USE_DOUBLE_QUANT` | `true` | Nested 4-bit quantization |
+| `HF_QUANTIZATION_ON_UNSUPPORTED` | `error` | `error` stops. `fallback` keeps full precision and reports quantization `none` |
+| `HF_OFFLINE` | `false` | Blocks `model download` and sets `HF_HUB_OFFLINE` plus `TRANSFORMERS_OFFLINE` while loading |
+| `HF_MAX_NEW_TOKENS` | 512, or `LLM_MAX_TOKENS` | Generation cap |
+| `HF_TOP_P` | `1.0` | Used when sampling is on |
+| `HF_TOP_K` | unset | Optional sampler cutoff |
+| `HF_REPETITION_PENALTY` | `1.0` | Generation penalty |
+
+4-bit and 8-bit use BitsAndBytes on NVIDIA CUDA (`pip install -e ".[huggingface-quant]"` plus `requirements/torch/cuda.txt`). CPU, MPS, ROCm, and XPU stay full precision. Setting `HF_QUANTIZATION_ON_UNSUPPORTED=fallback` runs full precision and the report says quantization is not active. A local run passes `local_files_only`, so a missing file fails instead of downloading. Copy `.env.example` for the full list. The longer guide is in the docs under Hugging Face local.
 
 After torch is installed:
 
@@ -176,7 +212,14 @@ figma-extractor annotate --dir ./out \
   --llm-task reconstruction_hints
 
 figma-extractor annotate --dir ./out --llm --llm-config ./llm.json
+
+figma-extractor annotate --dir ./out \
+  --llm \
+  --llm-provider huggingface \
+  --llm-task screen_classification
 ```
+
+The Hugging Face example above uses `HF_LOCAL_MODEL_PATH`. It does not pass a Hub id.
 
 `--dir` defaults to `.`. `--llm` / `--llm-disabled` override `LLM_ENABLED`. When that flag is omitted, the environment value applies (default false). `--llm-task` repeats and is used only when LLM mode is on. Allowed tasks: `semantic_classification`, `screen_classification`, `component_analysis`, `svg_analysis`, `reconstruction_hints`.
 
@@ -217,11 +260,16 @@ A nested `"llm"` object is merged over the top-level keys. `options` is an alias
 
 Model suggestions are written to `llm-annotations.json`. They do not replace `screens.json`. Reconstruction hints are recommendations (`kind` is `recommended`), not file facts.
 
-### Devices
+### Devices and local model files
 
 ```bash
 figma-extractor devices
+figma-extractor model download Qwen/Qwen3-0.6B --dest /models/Qwen3-0.6B
+figma-extractor model validate --path /models/Qwen3-0.6B
+figma-extractor model validate --path /models/Qwen3-0.6B --load
 ```
+
+`model validate` reads the directory and prints architecture, device, dtype, requested quantization, and active quantization. `--load` loads weights. `model download` is the only command that fetches the Hub, and it refuses to run when `HF_OFFLINE` is true.
 
 ## Python API
 
@@ -251,6 +299,19 @@ annotate(
         provider_options={"base_url": "http://127.0.0.1:11434"},
     ),
     write=True,
+)
+annotate(
+    "./out",
+    LlmConfig(
+        enabled=True,
+        provider="huggingface",
+        tasks=LlmTasks(screen_classification=True),
+        provider_options={
+            "backend": "local",
+            "model_path": "/models/Qwen3-0.6B",
+            "quantization": "none",
+        },
+    ),
 )
 
 print(detect_device().summary())
@@ -319,7 +380,8 @@ figma-extractor/
 │   ├── dev.txt
 │   ├── test.txt
 │   ├── llm.txt              # LangGraph runtime, no provider
-│   ├── providers/           # one file per chat provider, plus all-llm.txt
+│   ├── providers/           # one file per chat provider, plus all-llm,
+│   │                        # huggingface-local, and huggingface-quant
 │   └── torch/               # cpu, cuda, rocm, xpu, macos
 ├── README.md
 └── src/figma_extractor/
@@ -338,6 +400,8 @@ figma-extractor/
         ├── factory.py
         ├── graph.py         # LangGraph: prepare, invoke, validate, repair, finalize
         ├── device.py
+        ├── huggingface_local.py
+        ├── huggingface_settings.py
         └── providers/       # one module per provider, imported only when selected
 ```
 

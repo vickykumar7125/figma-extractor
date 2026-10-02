@@ -32,7 +32,9 @@ app = typer.Typer(
         "Examples:\n"
         "  figma-extractor extract --file design.fig --output ./out\n"
         "  figma-extractor info --dir ./out\n"
-        "  figma-extractor annotate --dir ./out --llm-disabled"
+        "  figma-extractor annotate --dir ./out --llm-disabled\n"
+        "  figma-extractor model validate --path /models/Qwen3-0.6B\n"
+        "  figma-extractor model download Qwen/Qwen3-0.6B --dest /models/Qwen3-0.6B"
     ),
 )
 console = Console(stderr=True)
@@ -197,6 +199,87 @@ def annotate_cmd(
         f"[green]Annotations[/] {mode} · {len(result['screens'])} screens → "
         f"{directory / 'llm-annotations.json'}"
     )
+
+
+model_app = typer.Typer(help="Prepare and check a local Hugging Face model directory.")
+app.add_typer(model_app, name="model")
+
+
+@model_app.command("validate")
+def model_validate_cmd(
+    path: Optional[Path] = typer.Option(
+        None,
+        "--path",
+        help="Local model directory. Defaults to HF_LOCAL_MODEL_PATH.",
+    ),
+    load: bool = typer.Option(
+        False,
+        "--load",
+        help="Load the weights. The default inspects files and does not download or load them.",
+    ),
+) -> None:
+    """Report architecture, device, dtype, and quantization for a local model."""
+    from figma_extractor.llm.config import LlmConfig
+    from figma_extractor.llm.errors import LlmError
+    from figma_extractor.llm.huggingface_local import build_local_plan, describe, load_pipeline
+    from figma_extractor.llm.registry import get_provider
+
+    options = {"backend": "local"}
+    if path is not None:
+        options["model_path"] = str(path)
+    try:
+        config = LlmConfig.load(
+            overrides={"provider": "huggingface", "enabled": False, "provider_options": options}
+        )
+        plan = build_local_plan(config)
+        if load:
+            from figma_extractor.llm.factory import load_class
+
+            pipeline_cls = load_class(
+                "langchain_huggingface",
+                "HuggingFacePipeline",
+                get_provider("huggingface"),
+            )
+            pipeline = load_pipeline(config, pipeline_cls)
+            footprint = memory_footprint(pipeline)
+            text = describe(plan)
+            if footprint:
+                text = f"{text}\nMemory footprint: {footprint}"
+        else:
+            text = describe(plan)
+    except (LlmError, OSError, ValueError) as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from None
+    console.print(text)
+
+
+@model_app.command("download")
+def model_download_cmd(
+    repo: str = typer.Argument(..., help="Hub repo id, for example Qwen/Qwen3-0.6B."),
+    dest: Path = typer.Option(..., "--dest", help="Directory that will hold the model files."),
+) -> None:
+    """Download weights into a directory. Local runs load that directory and do not download again."""
+    from figma_extractor.llm.errors import LlmError
+    from figma_extractor.llm.huggingface_local import download_model
+
+    try:
+        saved = download_model(repo, dest)
+    except (LlmError, OSError, ValueError) as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from None
+    console.print(f"Saved {repo} to {saved}")
+
+
+def memory_footprint(pipeline: object) -> str:
+    model = getattr(getattr(pipeline, "pipeline", None), "model", None)
+    reporter = getattr(model, "get_memory_footprint", None)
+    if reporter is None:
+        return ""
+    try:
+        size = int(reporter())
+    except Exception:
+        return ""
+    return f"{size / (1024 ** 2):.1f} MiB"
 
 
 @app.command("devices")

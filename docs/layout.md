@@ -10,7 +10,8 @@ figma-extractor/
 │   ├── dev.txt
 │   ├── test.txt
 │   ├── llm.txt              # LangGraph runtime, no provider
-│   ├── providers/           # one file per chat provider, plus all-llm.txt
+│   ├── providers/           # one file per chat provider, plus all-llm,
+│   │                        # huggingface-local, and huggingface-quant
 │   └── torch/               # cpu, cuda, rocm, xpu, macos
 ├── mkdocs.yml               # this documentation site
 ├── README.md
@@ -30,7 +31,9 @@ figma-extractor/
         ├── config.py
         ├── factory.py
         ├── graph.py         # LangGraph: prepare, invoke, validate, repair, finalize
-        ├── device.py
+        ├── device.py        # detect_device and local execution placement
+        ├── huggingface_local.py
+        ├── huggingface_settings.py
         └── providers/       # one module per provider, imported only when selected
 ```
 

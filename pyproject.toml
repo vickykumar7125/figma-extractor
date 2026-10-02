@@ -68,6 +68,15 @@ huggingface = [
   "langchain-core>=1.6,<2",
   "langchain-huggingface>=1.2,<2",
 ]
+huggingface-local = [
+  "figma-extractor[huggingface]",
+  "transformers>=4.46,<6",
+  "accelerate>=1.2,<2",
+]
+huggingface-quant = [
+  "figma-extractor[huggingface-local]",
+  "bitsandbytes>=0.45,<1",
+]
 groq = [
   "langgraph>=1.2,<2",
   "langchain>=1.4,<2",

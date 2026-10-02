@@ -44,6 +44,7 @@ class InstallPlan:
     accelerator: str
     extras: tuple[str, ...]
     torch_file: Path | None
+    local_requirements: tuple[Path, ...] = ()
     notes: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -133,6 +134,14 @@ def build_plan(*, include_llm: bool, include_torch: bool) -> InstallPlan:
     accelerator = detect_accelerator(system, machine)
     notes: list[str] = []
     extras: tuple[str, ...] = ("all-llm",) if include_llm else ()
+    local_requirements: list[Path] = []
+    if include_llm:
+        local_requirements.append(ROOT / "requirements" / "providers" / "huggingface-local.txt")
+        if accelerator == "cuda":
+            local_requirements.append(ROOT / "requirements" / "providers" / "huggingface-quant.txt")
+            notes.append(
+                "BitsAndBytes 4-bit and 8-bit are installed for NVIDIA CUDA. Other backends stay full precision."
+            )
     if include_llm:
         notes.append(
             "all-llm installs every chat provider. Extraction still runs with no provider configured."
@@ -151,6 +160,7 @@ def build_plan(*, include_llm: bool, include_torch: bool) -> InstallPlan:
         accelerator=accelerator,
         extras=extras,
         torch_file=torch_file,
+        local_requirements=tuple(local_requirements),
         notes=notes,
     )
 
@@ -164,6 +174,10 @@ def pip_commands(plan: InstallPlan) -> list[list[str]]:
     if plan.torch_file is not None:
         commands.append(
             [sys.executable, "-m", "pip", "install", "-r", str(plan.torch_file)]
+        )
+    for requirement in plan.local_requirements:
+        commands.append(
+            [sys.executable, "-m", "pip", "install", "-r", str(requirement)]
         )
     return commands
 

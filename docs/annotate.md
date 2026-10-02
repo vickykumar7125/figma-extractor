@@ -29,7 +29,14 @@ figma-extractor annotate --dir ./out \
 | `svg_analysis` | Notes on vector assets. Path `d` commands are omitted from the prompt |
 | `reconstruction_hints` | Layout recommendations, marked `recommended` |
 
-Enabled mode with an empty task list exits with an error. Hugging Face hosted chat has no streaming capability, so `LLM_STREAMING=true` is rejected for that provider.
+Enabled mode with an empty task list exits with an error. Hugging Face chat has no streaming capability, so `LLM_STREAMING=true` is rejected for that provider. The default Hugging Face backend is local: set `HF_LOCAL_MODEL_PATH` and do not pass a Hub id. `HF_BACKEND=remote` is the hosted path. The local install, quantization, and `model validate` command are on the [Hugging Face local](huggingface.md) page.
+
+```bash
+figma-extractor annotate --dir ./out \
+  --llm \
+  --llm-provider huggingface \
+  --llm-task screen_classification
+```
 
 ## Configuration order
 

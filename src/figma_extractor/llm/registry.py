@@ -122,7 +122,10 @@ PROVIDERS: dict[str, ProviderSpec] = {
             }
         ),
         credential_env=("HUGGINGFACEHUB_API_TOKEN", "HF_TOKEN"),
-        note="Hosted inference by default. Set backend=local for a local pipeline.",
+        note=(
+            "Local Transformers is the default (HF_BACKEND=local, HF_LOCAL_MODEL_PATH). "
+            "HF_BACKEND=remote uses the Hub and a token. A token is not required for local files."
+        ),
     ),
     "groq": ProviderSpec(
         id="groq",

@@ -54,3 +54,7 @@ class LlmConfigError(LlmError):
 
 class ProviderCallError(LlmError):
     """The provider failed after the shared retry policy was exhausted."""
+
+
+class ModelLoadError(LlmError):
+    """A local Hugging Face model could not be prepared or loaded."""

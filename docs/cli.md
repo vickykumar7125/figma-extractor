@@ -97,6 +97,18 @@ figma-extractor annotate --dir ./out --llm --llm-config ./llm.json
 
 Allowed task names: `semantic_classification`, `screen_classification`, `component_analysis`, `svg_analysis`, `reconstruction_hints`.
 
+## model
+
+Prepare a local Hugging Face directory. These commands do not run during `extract` or `annotate`.
+
+```bash
+figma-extractor model download Qwen/Qwen3-0.6B --dest /models/Qwen3-0.6B
+figma-extractor model validate --path /models/Qwen3-0.6B
+figma-extractor model validate --path /models/Qwen3-0.6B --load
+```
+
+`download` is refused when `HF_OFFLINE` is true. `validate` reads `config.json` and reports device, dtype, and quantization. It does not download and it does not load weights unless you pass `--load`.
+
 ## devices
 
 ```bash
