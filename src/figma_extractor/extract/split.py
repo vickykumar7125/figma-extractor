@@ -1,13 +1,13 @@
-"""Split multi-UI board frames into one screen (and PNG) per UI.
+"""Split multi-UI board frames into one screen tree per UI.
 
 Metronic-style kits stack many full pages inside one tall board, e.g.
 ``Auth - Branded`` contains ``Sign In``, ``Sign Up``, ``2FA``, … This module
 detects those boards from the render trees and replaces each board entry with
-its individual UI children so ``screenshot/`` gets one image per UI.
+its individual UI children so downstream consumers get one screen per UI.
 
 Example::
 
-    from figma_extractor.extract import split_screen_boards
+    from figma_extractor.extract.split import split_screen_boards
 
     split_screen_boards(Path("out"))
     # screens.json now lists Sign In / Sign Up / … instead of one tall board
@@ -416,7 +416,7 @@ def _is_crop_frame(node: dict[str, Any]) -> bool:
 
     Heuristic (kit-agnostic): wide enough to be a UI crop, short enough not to
     be a full desktop page, richly named (or clearly an overlay), and dense
-    enough to be worth a screenshot.
+    enough to be worth its own tree.
     """
     if node.get("type") not in _FRAME_TYPES:
         return False
@@ -451,8 +451,8 @@ def _promote_crops(
     Lift mid-size nested frames into their own screens.
 
     Design kits often nest overlays / cards inside tall boards. Promoting them
-    produces one PNG per UI crop so local shots can be compared to original
-    exports across arbitrary Figma files.
+    produces one tree per UI crop so a consumer sees each interface in
+    isolation across arbitrary Figma files.
 
     Skip promotion on full marketing pages and on typical single-UI leaves —
     otherwise Metronic auth pages explode into thousands of card crops.
@@ -461,7 +461,7 @@ def _promote_crops(
         return []
     parent_w = float(tree.get("w") or 0)
     parent_h = float(tree.get("h") or 0)
-    # Single interface pages: keep one screenshot unless an overlay is named.
+    # Single interface pages: keep one screen unless an overlay is named.
     single_ui = parent_w >= 1000 and 500 <= parent_h <= 2200
 
     promoted: list[tuple[dict[str, Any], dict[str, Any]]] = []
@@ -516,8 +516,8 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
     """
     Replace multi-UI board screens with one screen entry per nested UI.
 
-    Also promotes mid-size overlay crops so half-width Figma exports can be
-    matched against local screenshots.
+    Also promotes mid-size overlay crops so nested half-width UI regions become
+    addressable as standalone screens.
 
     Rewrites ``design/screens.json``, replaces ``design/trees/*.json`` with the
     leaf trees, and updates ``trees/index.json``.
@@ -564,9 +564,6 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
     final_screens: list[dict[str, Any]] = []
     for screen, tree in expanded:
         if tree is None:
-            screen.pop("localScreenshot", None)
-            screen.pop("localScreenshotError", None)
-            screen.pop("preview", None)
             final_screens.append(screen)
             continue
         page_slug = slug(ascii_name(str(screen.get("page") or "page")))
@@ -584,11 +581,6 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
         screen["tree"] = f"trees/{candidate}.json"
         screen["slug"] = candidate
         screen["renderNodes"] = _count_nodes(tree)
-        screen.pop("localScreenshot", None)
-        screen.pop("localScreenshotError", None)
-        screen.pop("preview", None)
-        screen.pop("screenshot", None)
-        screen.pop("screenshotError", None)
         final_screens.append(screen)
 
     summary = {

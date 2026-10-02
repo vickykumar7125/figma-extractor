@@ -101,26 +101,3 @@ def pretty_print_schema(schema: Schema) -> str:
             lines.append("}")
         lines.append("")
     return "\n".join(lines)
-
-
-def schema_as_dict(schema: Schema) -> dict[str, Any]:
-    return {
-        "package": schema.package,
-        "definitions": [
-            {
-                "name": d.name,
-                "kind": d.kind,
-                "fields": [
-                    {
-                        "name": f.name,
-                        "type": f.type,
-                        "isArray": f.is_array,
-                        "value": f.value,
-                        "isDeprecated": f.is_deprecated,
-                    }
-                    for f in d.fields
-                ],
-            }
-            for d in schema.definitions
-        ],
-    }

@@ -21,6 +21,8 @@ from figma_extractor.util import to_ndjson_line, write_json
 console = Console(stderr=True)
 FIGMA_API = "https://api.figma.com/v1"
 _FILE_KEY_RE = re.compile(r"/(?:design|file|board|slides)/([^/]+)")
+# Figma image refs are hex digests; anything outside this set is not a filename.
+_UNSAFE_REF_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 
 def parse_file_key(value: str) -> str:
@@ -125,15 +127,45 @@ def normalize_remote_document(payload: dict[str, Any], out_dir: Path) -> int:
     return count
 
 
+def _safe_image_name(image_ref: str) -> str | None:
+    """
+    Return a filesystem-safe name for an image ref, or ``None`` when unusable.
+
+    The ref becomes both the on-disk filename and the manifest ``hash``, so it
+    is kept verbatim for real refs (hex digests) and rejected rather than
+    rewritten when it contains path separators or traversal.
+    """
+    name = image_ref.strip()
+    if not name or name in (".", "..") or _UNSAFE_REF_RE.search(name):
+        return None
+    return name
+
+
 def download_remote_images(image_urls: dict[str, str], destination: Path) -> int:
+    """Download fill images, skipping refs that fail or are not safe filenames."""
     destination.mkdir(parents=True, exist_ok=True)
     count = 0
+    skipped: list[str] = []
     with httpx.Client(timeout=120, follow_redirects=True) as client:
         for image_ref, url in image_urls.items():
-            response = client.get(url)
-            response.raise_for_status()
-            (destination / image_ref).write_bytes(response.content)
+            name = _safe_image_name(image_ref)
+            if name is None:
+                skipped.append(image_ref)
+                continue
+            try:
+                response = client.get(url)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                # One dead asset URL must not abort the whole extraction.
+                skipped.append(f"{image_ref} ({type(exc).__name__})")
+                continue
+            (destination / name).write_bytes(response.content)
             count += 1
+
+    if skipped:
+        preview = ", ".join(skipped[:5])
+        more = f" +{len(skipped) - 5} more" if len(skipped) > 5 else ""
+        console.print(f"[yellow]Remote images[/] skipped {len(skipped)}: {preview}{more}")
     console.print(f"[green]Remote images[/] {count} → {destination}")
     return count
 

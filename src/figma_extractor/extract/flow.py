@@ -123,9 +123,10 @@ def infer_role(name: str, page: str = "") -> ScreenRole:
     name_lower = name.lower().strip()
     combined = f"{page_lower} {name_lower}"
 
-    if page_lower in _DEMO_PAGE_NAMES or (
-        page_lower and (name_lower == page_lower or name_lower.startswith(page_lower))
-    ):
+    # Only a known demo/component page implies a gallery. Matching a screen name
+    # against its own page name must not do this: pages named after their screen
+    # ("Dashboard", "Settings", "Landing Page") are ordinary product pages.
+    if page_lower in _DEMO_PAGE_NAMES:
         return "component-gallery"
 
     for role, keywords in _ROLE_KEYWORDS.items():

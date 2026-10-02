@@ -41,8 +41,10 @@ pip install -e .
 ```
 
 The `figma-extractor` console script is registered on install. Runtime
-dependencies are declared in `pyproject.toml`; `requirements.txt` mirrors them
-for pinned environments (`pip install -r requirements.txt`).
+dependencies are declared in `pyproject.toml`; `requirements.txt` is an
+unpinned mirror for environments that install from a requirements file
+(`pip install -r requirements.txt`). For reproducible builds, prefer
+`pip install .`, which resolves the version ranges in `pyproject.toml`.
 
 ## CLI
 

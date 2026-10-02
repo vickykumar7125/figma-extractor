@@ -131,11 +131,10 @@ def extract(
     if not keep_intermediates:
         _clean_intermediates(output_path)
 
-    root = str(design_dir(output_path))
     return {
         "source": {"type": source_kind, "value": source_value},
         "output": str(output_path),
-        "design": root,
+        "design": str(design_dir(output_path)),  # legacy alias of "output"
         "decode": decode_summary,
         "tokens": tokens,
         "structure": structure,

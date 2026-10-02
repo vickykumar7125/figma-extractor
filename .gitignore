@@ -1,6 +1,8 @@
 # Temporary extract caches
 source/
 extracted/
+corpus-review/
+out/
 
 # Packaging
 *.egg-info/
@@ -13,3 +15,7 @@ build/
 .venv/
 *.pyc
 .DS_Store
+
+# IDE
+.idea/
+.vscode/

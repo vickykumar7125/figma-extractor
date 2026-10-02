@@ -29,10 +29,6 @@ INTERMEDIATE_DIRS: tuple[str, ...] = ("source", "extracted")
 LEGACY_DIRS: tuple[str, ...] = ("design",)
 
 
-def resolve_out(path: Path | str) -> Path:
-    return Path(path).expanduser().resolve()
-
-
 def source_dir(out: Path) -> Path:
     """Raw unzip / remote download cache."""
     return out / "source"
@@ -54,11 +50,5 @@ def nodes_path(out: Path) -> Path:
 
 def require_file(path: Path, hint: str) -> Path:
     if not path.is_file():
-        raise FileNotFoundError(f"Missing {path}\n{hint}")
-    return path
-
-
-def require_dir(path: Path, hint: str) -> Path:
-    if not path.is_dir():
         raise FileNotFoundError(f"Missing {path}\n{hint}")
     return path

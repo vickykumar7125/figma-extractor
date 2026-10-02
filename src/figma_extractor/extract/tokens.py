@@ -10,6 +10,7 @@ from rich.console import Console
 
 from figma_extractor.paths import design_dir, nodes_path, require_file
 from figma_extractor.util import (
+    font_weight_from_name,
     gid,
     iter_ndjson,
     round_num,
@@ -120,6 +121,24 @@ def _resolve_variable_value(
     return None
 
 
+def _named_style(node: dict[str, Any]) -> dict[str, Any]:
+    """
+    Return ``node`` with a guaranteed string ``name``.
+
+    A style whose name is absent (or JSON ``null``) would otherwise break the
+    group split and the CSS slug downstream, so normalize once at the boundary.
+    """
+    name = node.get("name")
+    if isinstance(name, str):
+        return node
+    return {**node, "name": ""}
+
+
+def _style_group(name: str) -> str:
+    """Group a slash-delimited style name (``Brand/Primary/500`` → ``Brand``)."""
+    return (name.split("/", 1)[0].strip() or "Default") if "/" in name else "Default"
+
+
 def build_tokens(out: Path) -> dict[str, Any]:
     nodes_file = require_file(
         nodes_path(out),
@@ -137,11 +156,11 @@ def build_tokens(out: Path) -> dict[str, Any]:
             continue
         style_type = node.get("styleType")
         if style_type == "FILL":
-            fill_styles.append(node)
+            fill_styles.append(_named_style(node))
         elif style_type == "TEXT":
-            text_styles.append(node)
+            text_styles.append(_named_style(node))
         elif style_type == "EFFECT":
-            effect_styles.append(node)
+            effect_styles.append(_named_style(node))
         if node.get("type") == "VARIABLE":
             variables.append(node)
         elif node.get("type") == "VARIABLE_SET":
@@ -159,10 +178,9 @@ def build_tokens(out: Path) -> dict[str, Any]:
         css_paints = [c for c in (_paint_to_css(p) for p in paints) if c]
         if not css_paints:
             continue
-        parts = style.get("name", "").split("/")
-        group = parts[0] if parts else "Default"
+        name = style["name"]
         entry: dict[str, Any] = {
-            "name": style.get("name"),
+            "name": name,
             "key": style.get("key"),
             "id": gid(style.get("guid")),
             "value": css_paints[0],
@@ -171,8 +189,8 @@ def build_tokens(out: Path) -> dict[str, Any]:
             entry["layers"] = css_paints
         if paints and paints[0].get("type") != "SOLID":
             entry["paintType"] = paints[0].get("type")
-        color_groups[group].append(entry)
-        color_flat[style.get("name", "")] = entry["value"]
+        color_groups[_style_group(name)].append(entry)
+        color_flat[name] = entry["value"]
 
     # --- variables ---
     by_id = {gid(v.get("guid")): v for v in variables if gid(v.get("guid"))}
@@ -217,13 +235,19 @@ def build_tokens(out: Path) -> dict[str, Any]:
     for style in text_styles:
         meta = (((style.get("derivedTextData") or {}).get("fontMetaData")) or [{}])[0]
         font_name = style.get("fontName") or {}
+        name = style["name"]
+        # Local .fig text styles carry no derivedTextData, so the weight has to be
+        # recovered from the font style name ("SemiBold" -> 600).
+        font_weight = font_weight_from_name(
+            font_name.get("style"), meta.get("fontWeight"), font_name.get("family")
+        )
         entry = {
-            "name": style.get("name"),
+            "name": name,
             "key": style.get("key"),
             "id": gid(style.get("guid")),
             "fontFamily": font_name.get("family"),
             "fontStyleName": font_name.get("style"),
-            "fontWeight": meta.get("fontWeight"),
+            "fontWeight": font_weight,
             "fontStyle": "italic" if meta.get("fontStyle") == "ITALIC" else "normal",
             "fontSize": round_num(style["fontSize"]) if style.get("fontSize") is not None else None,
             "lineHeight": _line_height_css(style.get("lineHeight")),
@@ -235,8 +259,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             entry["textDecoration"] = style["textDecoration"]
         if style.get("paragraphSpacing"):
             entry["paragraphSpacing"] = round_num(style["paragraphSpacing"])
-        group = style.get("name", "").split("/")[0] if "/" in style.get("name", "") else "Default"
-        typography[group].append(entry)
+        typography[_style_group(name)].append(entry)
         if entry["fontFamily"] and entry["fontWeight"]:
             fonts[entry["fontFamily"]].add(int(entry["fontWeight"]))
 
@@ -248,7 +271,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
         shadows = [p for p in parts if isinstance(p, str)]
         filters = [p for p in parts if isinstance(p, dict)]
         entry = {
-            "name": (style.get("name") or "").strip(),
+            "name": style["name"].strip(),
             "key": style.get("key"),
             "id": gid(style.get("guid")),
             "raw": [

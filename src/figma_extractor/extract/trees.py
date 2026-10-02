@@ -226,6 +226,7 @@ _BLEND = {
     "LINEAR_DODGE": "plus-lighter",
 }
 
+
 def _radius(raw: dict[str, Any]) -> Any:
     corners = [
         raw.get("rectangleTopLeftCornerRadius"),
@@ -327,6 +328,8 @@ class _TreeBuilder:
         self.raw: dict[str, dict[str, Any]] = {}
         self.children: dict[str, list[str]] = defaultdict(list)
         self.canvas_background: dict[str, str] = {}
+        # Node budget is per-screen; reset by build() before each walk.
+        self._budget = _NODE_BUDGET
 
         for raw in iter_ndjson(nodes_file):
             node_id = gid(raw.get("guid"))
@@ -594,6 +597,6 @@ def build_screen_trees(out: Path) -> dict[str, Any]:
     )
 
     # Tall kit boards (Auth - Branded, My Account - Pages, …) become one screen
-    # per nested UI so each screenshot is a single interface.
+    # per nested UI so each tree holds exactly one interface.
     summary["split"] = split_screen_boards(out)
     return summary

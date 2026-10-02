@@ -16,7 +16,7 @@ from PIL import Image
 from rich.console import Console
 
 from figma_extractor.paths import design_dir, extracted_dir, nodes_path, require_file, source_dir
-from figma_extractor.util import gid, iter_ndjson, write_json
+from figma_extractor.util import gid, iter_ndjson, unique_slug, write_json
 
 console = Console(stderr=True)
 
@@ -145,14 +145,17 @@ def build_images(out: Path) -> dict[str, Any]:
     out_images = design_dir(out) / "assets" / "images"
     out_images.mkdir(parents=True, exist_ok=True)
 
-    files = [p for p in images_src.iterdir() if p.is_file() and not p.name.startswith(".")]
+    files = sorted(p for p in images_src.iterdir() if p.is_file() and not p.name.startswith("."))
     manifest: list[dict[str, Any]] = []
     by_ext: dict[str, int] = defaultdict(int)
+    used_names: set[str] = set()
 
     for src in files:
         buf = src.read_bytes()
         ext, mime = _detect(buf)
-        out_name = f"{src.name[:12]}.{ext}"
+        # Truncated hashes are only for readability, so de-duplicate the stem:
+        # two distinct refs can share their first 12 characters.
+        out_name = f"{unique_slug(src.name[:12], used_names)}.{ext}"
         dest = out_images / out_name
         dest.write_bytes(buf)
         dims = _dimensions(dest, ext)
