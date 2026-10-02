@@ -112,9 +112,11 @@ jobs:
         run: |
           mkdir -p packages
           find dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp {} packages/ \;
-      - name: Publish with Trusted Publishing
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
           repository-url: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'testpypi') && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
-          attestations: true
+          attestations: false

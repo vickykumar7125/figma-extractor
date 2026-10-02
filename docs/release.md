@@ -21,9 +21,9 @@ Pushing a tag `v*` runs `.github/workflows/release.yml`:
 4. Writes checksums and `release-manifest.json`.
 5. Installs the wheel in a clean virtualenv and runs `figma-extractor --help`.
 6. Creates a GitHub Release with those files.
-7. Publishes the wheel and sdist to PyPI with Trusted Publishing.
+7. Publishes the wheel and sdist to PyPI.
 
-No API token is stored in the repository or the workflow. Publishing uses GitHub OIDC (`id-token: write`) and the environment named `pypi`.
+The API token is not stored in the repository or the workflow file. The publish job reads the GitHub Actions secret `PYPI_API_TOKEN` inside the `pypi` environment. A brand-new PyPI project cannot be created by Trusted Publishing until a pending publisher is saved on the PyPI website, so this first release uses that secret. After the project exists, add the trusted publisher below, delete `PYPI_API_TOKEN`, and remove the `password` input from `release.yml` so later tags use OpenID Connect only.
 
 ## Trusted publisher
 
