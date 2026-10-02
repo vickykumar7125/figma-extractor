@@ -49,6 +49,8 @@ def test_macos_intel_skips_the_profile() -> None:
 
 
 def test_full_plan_installs_the_cuda_file(monkeypatch) -> None:
+    monkeypatch.setattr(setup.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(setup.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(setup, "detect_accelerator", lambda system, machine: "cuda")
     monkeypatch.setattr(setup, "cuda_driver_version", lambda: (13, 1))
     plan = setup.build_plan(include_llm=True, include_torch=True)
@@ -67,6 +69,8 @@ def test_core_plan_is_the_editable_package_only(monkeypatch) -> None:
 
 
 def test_xpu_plan_uses_the_xpu_file(monkeypatch) -> None:
+    monkeypatch.setattr(setup.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(setup.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(setup, "detect_accelerator", lambda system, machine: "xpu")
     plan = setup.build_plan(include_llm=True, include_torch=True)
     assert plan.profile is not None
