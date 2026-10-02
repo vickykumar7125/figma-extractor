@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -17,17 +16,32 @@ def load_json(path: Path, default: Any) -> Any:
     return orjson.loads(path.read_bytes())
 
 
-def build_task_context(directory: Path, tasks: list[str], max_chars: int) -> dict[str, Any]:
-    """Return one JSON-serializable payload per enabled task."""
+def build_raw_task_context(directory: Path, tasks: list[str]) -> dict[str, Any]:
+    """Return one JSON-serializable payload per enabled task, before budget packing."""
     screens = load_json(directory / "screens.json", [])
     if not isinstance(screens, list):
         screens = []
+    from figma_extractor.catalog import changed_screen_ids
+
+    changed = changed_screen_ids(directory)
+    if changed is not None:
+        screens = [row for row in screens if str(row.get("id")) in changed]
     sets = load_json(directory / "component-sets.json", [])
     if not isinstance(sets, list):
         sets = []
-    manifest = load_json(directory / "assets" / "manifest.json", {})
     context: dict[str, Any] = {}
+    screen_tasks = {
+        "semantic_classification",
+        "screen_classification",
+        "svg_analysis",
+        "reconstruction_hints",
+        "interaction_analysis",
+        "responsive_analysis",
+        "pattern_synthesis",
+    }
     for task in tasks:
+        if changed is not None and not screens and task in screen_tasks:
+            continue
         if task == "screen_classification":
             context[task] = screen_payload(screens)
         elif task == "component_analysis":
@@ -38,7 +52,33 @@ def build_task_context(directory: Path, tasks: list[str], max_chars: int) -> dic
             context[task] = semantic_payload(directory, screens)
         elif task == "reconstruction_hints":
             context[task] = reconstruction_payload(directory, screens)
-    return fit_context(context, max_chars)
+        elif task == "asset_analysis":
+            context[task] = asset_payload(directory)
+        elif task == "interaction_analysis":
+            context[task] = interaction_payload(directory, screens)
+        elif task == "responsive_analysis":
+            context[task] = responsive_payload(screens)
+        elif task == "component_synthesis":
+            context[task] = synthesis_payload(sets, note="Propose a component only when several rows repeat.")
+        elif task == "pattern_synthesis":
+            context[task] = pattern_payload(screens)
+        elif task == "prompt_optimization":
+            context[task] = {"tasks": [name for name in tasks if name != "prompt_optimization"]}
+    return context
+
+
+def build_task_context(
+    directory: Path,
+    tasks: list[str],
+    max_chars: int,
+    *,
+    compact: bool = False,
+    max_tokens: int | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Build per-task payloads and pack them to the character budget."""
+    raw = build_raw_task_context(directory, tasks)
+    return fit_context(raw, max_chars, compact=compact, max_tokens=max_tokens, model=model)
 
 
 def screen_rows(screens: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -126,6 +166,68 @@ def reconstruction_payload(directory: Path, screens: list[dict[str, Any]]) -> di
     }
 
 
+def asset_payload(directory: Path) -> dict[str, Any]:
+    manifest = load_json(directory / "assets" / "manifest.json", [])
+    rows = manifest if isinstance(manifest, list) else []
+    if isinstance(manifest, dict):
+        images = manifest.get("images")
+        rows = images if isinstance(images, list) else []
+    slim = []
+    for entry in rows[:30]:
+        if not isinstance(entry, dict):
+            continue
+        slim.append(
+            {
+                "assetId": entry.get("hash"),
+                "mime": entry.get("mime"),
+                "w": entry.get("width"),
+                "h": entry.get("height"),
+                "usageCount": entry.get("usageCount"),
+            }
+        )
+    return {
+        "note": "Proposals annotate asset ids. They do not replace the file path.",
+        "assets": slim,
+    }
+
+
+def interaction_payload(directory: Path, screens: list[dict[str, Any]]) -> dict[str, Any]:
+    flow = load_json(directory / "ui-flow.json", {})
+    routes = flow.get("suggestedRoutes") if isinstance(flow, dict) else None
+    return {
+        "screens": [{"id": row.get("id"), "name": row.get("name"), "slug": row.get("slug")} for row in screens[:20]],
+        "routes": routes if isinstance(routes, list) else [],
+    }
+
+
+def responsive_payload(screens: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "screens": [
+            {"id": row.get("id"), "name": row.get("name"), "w": row.get("width"), "h": row.get("height")}
+            for row in screens[:20]
+        ]
+    }
+
+
+def synthesis_payload(sets: list[dict[str, Any]], *, note: str) -> dict[str, Any]:
+    rows = []
+    for entry in sets[:20]:
+        if not isinstance(entry, dict):
+            continue
+        rows.append({"id": entry.get("id"), "name": entry.get("name"), "variantCount": entry.get("variantCount")})
+    return {"note": note + " origin must be llm_proposed.", "componentSets": rows}
+
+
+def pattern_payload(screens: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "note": "A pattern is a proposal. origin must be llm_proposed.",
+        "screens": [
+            {"id": row.get("id"), "name": row.get("name"), "role": row.get("role")}
+            for row in screens[:20]
+        ],
+    }
+
+
 def layout_skeleton(node: dict[str, Any], depth: int) -> dict[str, Any]:
     layout = node.get("layout") if isinstance(node.get("layout"), dict) else {}
     skeleton: dict[str, Any] = {
@@ -182,17 +284,24 @@ def collect_vectors(node: dict[str, Any], found: list[dict[str, Any]], budget: i
             collect_vectors(child, found, budget)
 
 
-def fit_context(context: dict[str, Any], max_chars: int) -> dict[str, Any]:
-    """Drop trailing list entries until the TOON text fits the configured budget."""
-    if context_size(context) <= max_chars:
-        return context
-    fitted = json.loads(json.dumps(context, default=str))
-    for payload in fitted.values():
-        if not isinstance(payload, dict):
-            continue
-        for value in payload.values():
-            if isinstance(value, list) and len(value) > 1:
-                value[:] = value[: max(1, len(value) // 2)]
-    if context_size(fitted) > max_chars:
-        return {"truncated": True, "tasks": sorted(context)}
-    return fitted
+def fit_context(
+    context: dict[str, Any],
+    max_chars: int,
+    *,
+    compact: bool = False,
+    max_tokens: int | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Drop the lowest-value rows until the TOON user text fits the budget."""
+    from figma_extractor.llm.prompt_format import context_token_size
+    from figma_extractor.toon.optimize import pack_context
+
+    char_measure = lambda ctx: context_size(ctx, compact=compact)
+    token_measure = lambda ctx: context_token_size(ctx, compact=compact, model=model)
+    return pack_context(
+        context,
+        max_chars,
+        char_measure,
+        max_tokens=max_tokens,
+        token_measure=token_measure if max_tokens is not None else None,
+    )

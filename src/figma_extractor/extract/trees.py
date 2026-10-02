@@ -48,6 +48,113 @@ JUSTIFY = {
     "SPACE_EVENLY": "space-evenly",
     "SPACE_AROUND": "space-around",
 }
+
+# Raw Figma field names → stable styleRef field. Prefer inherit* then styleIdFor*.
+STYLE_REF_SOURCES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("fill", ("inheritFillStyleID", "styleIdForFill", "fillStyleId")),
+    ("stroke", ("inheritFillStyleIDForStroke", "styleIdForStrokeFill", "strokeStyleId")),
+    ("text", ("inheritTextStyleID", "styleIdForText", "textStyleId")),
+    ("effect", ("inheritEffectStyleID", "styleIdForEffect", "effectStyleId")),
+    ("background", ("inheritFillStyleIDForBackground",)),
+    ("grid", ("inheritGridStyleID", "styleIdForGrid")),
+)
+
+
+def style_id_value(value: Any) -> str | None:
+    """Normalize a raw style id (guid, nested guid, or library assetRef key)."""
+    if value is None or value == "" or value == 0 or value == {}:
+        return None
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, dict):
+        return None
+    if "sessionID" in value and "localID" in value:
+        return gid(value)
+    nested = value.get("guid")
+    if isinstance(nested, dict):
+        return gid(nested)
+    asset = value.get("assetRef")
+    if isinstance(asset, dict) and asset.get("key"):
+        return str(asset["key"])
+    return None
+
+
+def collect_style_refs(raw: dict[str, Any]) -> list[dict[str, str]]:
+    """Emit ``styleRefs`` as ``{field, id}`` from inherit*/styleIdFor* raw keys."""
+    refs: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for field, keys in STYLE_REF_SOURCES:
+        for key in keys:
+            if key not in raw:
+                continue
+            ref_id = style_id_value(raw.get(key))
+            if ref_id and field not in seen:
+                refs.append({"field": field, "id": ref_id})
+                seen.add(field)
+                break
+    return refs
+
+
+def collect_variable_refs(raw: dict[str, Any]) -> list[dict[str, str]] | None:
+    """Emit ``variableRefs`` from ``variableConsumptionMap`` entry aliases."""
+    variable_map = raw.get("variableConsumptionMap")
+    if not isinstance(variable_map, dict) or not variable_map:
+        return None
+    refs: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    entries = variable_map.get("entries")
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("variableField") or "")
+            data = entry.get("variableData")
+            value = data.get("value") if isinstance(data, dict) else None
+            var_id = _variable_id_from_value(value)
+            if not var_id:
+                continue
+            key = (var_id, field)
+            if key in seen:
+                continue
+            seen.add(key)
+            item: dict[str, str] = {"id": var_id}
+            if field:
+                item["field"] = field
+            refs.append(item)
+    else:
+        # Older maps: field name → guid / alias payload.
+        for field, payload in variable_map.items():
+            var_id = _variable_id_from_value(payload)
+            if not var_id:
+                continue
+            key = (var_id, str(field))
+            if key in seen:
+                continue
+            seen.add(key)
+            refs.append({"id": var_id, "field": str(field)})
+
+    refs.sort(key=lambda item: (item.get("field") or "", item["id"]))
+    return refs or None
+
+
+def _variable_id_from_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, dict):
+        return None
+    direct = style_id_value(value)
+    if direct:
+        return direct
+    alias = value.get("alias")
+    if isinstance(alias, dict):
+        return style_id_value(alias.get("guid") if isinstance(alias.get("guid"), dict) else alias)
+    nested = value.get("guid")
+    if isinstance(nested, dict):
+        return gid(nested)
+    return None
 ALIGN = {
     "MIN": "flex-start",
     "CENTER": "center",
@@ -180,29 +287,41 @@ def shadows(effects: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
                 }
             )
         elif kind == "BACKGROUND_BLUR":
-            result.append(
-                {
-                    "type": "backdrop",
-                    "blur": round_num(min(float(effect.get("radius") or 0), 40.0), 2),
-                }
-            )
+            original = float(effect.get("radius") or 0)
+            clamped = min(original, 40.0)
+            entry: dict[str, Any] = {
+                "type": "backdrop",
+                "blur": round_num(clamped, 2),
+            }
+            if original > 40.0:
+                entry["clamped"] = True
+                entry["originalRadius"] = round_num(original, 2)
+            result.append(entry)
         elif kind in ("LAYER_BLUR", "FOREGROUND_BLUR"):
             radius = float(effect.get("radius") or 0)
             # Huge “foreground blurs” with a colour are soft drop-shadows in this
             # file format; treating them as filter:blur() would erase the layer.
             if color and (offset.get("x") or offset.get("y") or radius >= 40):
-                result.append(
-                    {
-                        "type": "drop",
-                        "x": round_num(offset.get("x", 0), 2),
-                        "y": round_num(offset.get("y", 0), 2),
-                        "blur": round_num(min(radius, 80.0), 2),
-                        "spread": round_num(effect.get("spread", 0), 2),
-                        "color": color,
-                    }
-                )
+                clamped = min(radius, 80.0)
+                entry = {
+                    "type": "drop",
+                    "x": round_num(offset.get("x", 0), 2),
+                    "y": round_num(offset.get("y", 0), 2),
+                    "blur": round_num(clamped, 2),
+                    "spread": round_num(effect.get("spread", 0), 2),
+                    "color": color,
+                }
+                if radius > 80.0:
+                    entry["clamped"] = True
+                    entry["originalRadius"] = round_num(radius, 2)
+                result.append(entry)
             elif radius > 0:
-                result.append({"type": "blur", "blur": round_num(min(radius, 24.0), 2)})
+                clamped = min(radius, 24.0)
+                entry = {"type": "blur", "blur": round_num(clamped, 2)}
+                if radius > 24.0:
+                    entry["clamped"] = True
+                    entry["originalRadius"] = round_num(radius, 2)
+                result.append(entry)
     return result
 
 
@@ -250,14 +369,19 @@ def layout(raw: dict[str, Any]) -> dict[str, Any] | None:
     layout: dict[str, Any] = {"dir": "row" if mode == "HORIZONTAL" else "column"}
     if raw.get("stackSpacing") is not None:
         layout["gap"] = round_num(raw["stackSpacing"], 2)
-    padding = [
-        raw.get("stackVerticalPadding"),
-        raw.get("stackPaddingRight"),
-        raw.get("stackPaddingBottom"),
-        raw.get("stackHorizontalPadding"),
-    ]
+    top = raw.get("stackVerticalPadding")
+    right = raw.get("stackPaddingRight")
+    bottom = raw.get("stackPaddingBottom")
+    left = raw.get("stackHorizontalPadding")
+    padding = [top, right, bottom, left]
     if any(value is not None for value in padding):
         layout["pad"] = [round_num(value or 0, 2) for value in padding]
+        layout["padding"] = {
+            "top": round_num(top or 0, 2),
+            "right": round_num(right or 0, 2),
+            "bottom": round_num(bottom or 0, 2),
+            "left": round_num(left or 0, 2),
+        }
     justify = JUSTIFY.get(str(raw.get("stackPrimaryAlignItems") or ""))
     if justify:
         layout["justify"] = justify
@@ -267,6 +391,86 @@ def layout(raw: dict[str, Any]) -> dict[str, Any] | None:
     if raw.get("stackWrap") == "WRAP":
         layout["wrap"] = True
     return layout
+
+
+def constraints(raw: dict[str, Any]) -> dict[str, str] | None:
+    horizontal = raw.get("horizontalConstraint")
+    vertical = raw.get("verticalConstraint")
+    if not horizontal and not vertical:
+        return None
+    result: dict[str, str] = {}
+    if isinstance(horizontal, str) and horizontal:
+        result["horizontal"] = horizontal
+    if isinstance(vertical, str) and vertical:
+        result["vertical"] = vertical
+    return result or None
+
+
+def layout_sizing(*, hug_main: bool, hug_cross: bool, grow: Any) -> dict[str, str] | None:
+    sizing: dict[str, str] = {}
+    if hug_main:
+        sizing["main"] = "hug"
+    elif grow:
+        sizing["main"] = "grow"
+    if hug_cross:
+        sizing["cross"] = "hug"
+    return sizing or None
+
+
+def transform_extras(transform: dict[str, Any]) -> dict[str, Any] | None:
+    """Store rotation/scale when the matrix is not a pure translation."""
+    m00 = float(transform.get("m00") or 1.0)
+    m01 = float(transform.get("m01") or 0.0)
+    m10 = float(transform.get("m10") or 0.0)
+    m11 = float(transform.get("m11") or 1.0)
+    if abs(m00 - 1.0) < 1e-9 and abs(m11 - 1.0) < 1e-9 and abs(m01) < 1e-9 and abs(m10) < 1e-9:
+        return None
+
+    extras: dict[str, Any] = {
+        "matrix": {
+            "m00": round_num(m00, 5),
+            "m01": round_num(m01, 5),
+            "m10": round_num(m10, 5),
+            "m11": round_num(m11, 5),
+        }
+    }
+    scale_x = math.hypot(m00, m10)
+    scale_y = math.hypot(m01, m11)
+    if abs(scale_x - 1.0) > 1e-6 or abs(scale_y - 1.0) > 1e-6:
+        extras["scale"] = {"x": round_num(scale_x, 4), "y": round_num(scale_y, 4)}
+    angle = math.degrees(math.atan2(m10, m00))
+    if abs(angle) > 1e-3:
+        extras["rotation"] = round_num(angle, 3)
+    return extras
+
+
+def stroke_details(raw: dict[str, Any], paints_list: list[dict[str, Any]]) -> dict[str, Any]:
+    stroke: dict[str, Any] = {
+        "paints": paints_list,
+        "weight": round_num(raw.get("strokeWeight", 1), 2),
+        "align": raw.get("strokeAlign") or "INSIDE",
+    }
+    cap = raw.get("strokeCap")
+    if isinstance(cap, str) and cap and cap != "NONE":
+        stroke["cap"] = cap
+    join = raw.get("strokeJoin")
+    if isinstance(join, str) and join:
+        stroke["join"] = join
+    dash = raw.get("dashPattern")
+    if isinstance(dash, list) and dash:
+        stroke["dash"] = [round_num(item, 2) for item in dash if item is not None]
+    sides = {
+        "top": raw.get("strokeTopWeight"),
+        "right": raw.get("strokeRightWeight"),
+        "bottom": raw.get("strokeBottomWeight"),
+        "left": raw.get("strokeLeftWeight"),
+    }
+    if any(value is not None for value in sides.values()):
+        stroke["weights"] = {
+            side: round_num(value if value is not None else stroke["weight"], 2)
+            for side, value in sides.items()
+        }
+    return stroke
 
 
 def text(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -279,9 +483,11 @@ def text(raw: dict[str, Any]) -> dict[str, Any] | None:
     meta = (derived.get("fontMetaData") or [{}])[0]
     style = str(font.get("style") or "")
     family = font.get("family")
+    meta_weight = meta.get("fontWeight")
     text: dict[str, Any] = {
         "content": characters,
-        "weight": weight_from_style(style, meta.get("fontWeight"), family if isinstance(family, str) else None),
+        "weight": weight_from_style(style, meta_weight, family if isinstance(family, str) else None),
+        "weightSource": "font-metadata" if meta_weight is not None else "font-style-name",
     }
     if family:
         text["family"] = family
@@ -330,6 +536,8 @@ class TreeBuilder:
         self.canvas_background: dict[str, str] = {}
         # Node budget is per-screen; reset by build() before each walk.
         self.budget = NODE_BUDGET
+        self.truncated_events: list[dict[str, Any]] = []
+        self.unsupported_events: list[dict[str, Any]] = []
 
         for raw in iter_ndjson(nodes_file):
             node_id = gid(raw.get("guid"))
@@ -375,13 +583,9 @@ class TreeBuilder:
         fills = paints(raw.get("fillPaints"))
         if fills:
             node["fills"] = fills
-        strokes = paints(raw.get("strokePaints"))
-        if strokes:
-            node["stroke"] = {
-                "paints": strokes,
-                "weight": round_num(raw.get("strokeWeight", 1), 2),
-                "align": raw.get("strokeAlign") or "INSIDE",
-            }
+        stroke_paints = paints(raw.get("strokePaints"))
+        if stroke_paints:
+            node["stroke"] = stroke_details(raw, stroke_paints)
         shadow_items = shadows(raw.get("effects"))
         if shadow_items:
             node["shadows"] = shadow_items
@@ -393,14 +597,35 @@ class TreeBuilder:
         layout_box = layout(raw)
         if layout_box:
             node["layout"] = layout_box
+        grow = None
         if raw.get("stackChildPrimaryGrow"):
-            node["grow"] = round_num(raw["stackChildPrimaryGrow"], 2)
+            grow = round_num(raw["stackChildPrimaryGrow"], 2)
+            node["grow"] = grow
         if raw.get("stackPositioning") == "ABSOLUTE":
             node["absolute"] = True
-        if raw.get("stackPrimarySizing") == "RESIZE_TO_FIT_WITH_IMPLICIT_SIZE":
+        hug_main = raw.get("stackPrimarySizing") == "RESIZE_TO_FIT_WITH_IMPLICIT_SIZE"
+        hug_cross = raw.get("stackCounterSizing") == "RESIZE_TO_FIT_WITH_IMPLICIT_SIZE"
+        if hug_main:
             node["hugMain"] = True
-        if raw.get("stackCounterSizing") == "RESIZE_TO_FIT_WITH_IMPLICIT_SIZE":
+        if hug_cross:
             node["hugCross"] = True
+        sizing = layout_sizing(hug_main=hug_main, hug_cross=hug_cross, grow=grow)
+        if sizing:
+            if "layout" not in node:
+                node["layout"] = {}
+            node["layout"]["sizing"] = sizing
+        constraint_box = constraints(raw)
+        if constraint_box:
+            node["constraints"] = constraint_box
+        extras = transform_extras(transform)
+        if extras:
+            node["transform"] = extras
+        style_refs = collect_style_refs(raw)
+        if style_refs:
+            node["styleRefs"] = style_refs
+        variable_refs = collect_variable_refs(raw)
+        if variable_refs:
+            node["variableRefs"] = variable_refs
         # Frames mask their children unless the mask is explicitly disabled.
         if node_type in ("FRAME", "SECTION") and not raw.get("frameMaskDisabled"):
             node["clip"] = True
@@ -416,12 +641,32 @@ class TreeBuilder:
             node["text"] = text_style
 
         if self.paths and node_type in GEOMETRY_TYPES:
-            outlines = self.paths.outlines(raw.get("fillGeometry"))
+            fill_geometry = raw.get("fillGeometry")
+            outlines = self.paths.outlines(fill_geometry)
             if outlines:
                 node["paths"] = outlines
-            stroke_outlines = self.paths.outlines(raw.get("strokeGeometry"))
+            elif fill_geometry:
+                self.unsupported_events.append(
+                    {
+                        "nodeId": node_id,
+                        "type": node_type,
+                        "field": "fillGeometry",
+                        "reason": "outline-compile-failed",
+                    }
+                )
+            stroke_geometry = raw.get("strokeGeometry")
+            stroke_outlines = self.paths.outlines(stroke_geometry)
             if stroke_outlines:
                 node["strokePaths"] = stroke_outlines
+            elif stroke_geometry:
+                self.unsupported_events.append(
+                    {
+                        "nodeId": node_id,
+                        "type": node_type,
+                        "field": "strokeGeometry",
+                        "reason": "outline-compile-failed",
+                    }
+                )
         return node
 
     @staticmethod
@@ -453,10 +698,20 @@ class TreeBuilder:
                     overrides.setdefault(target, {}).update(fields)
         return overrides
 
-    def build(self, root_id: str) -> tuple[dict[str, Any] | None, int]:
-        self.budget = NODE_BUDGET
+    def build(self, root_id: str, *, budget: int | None = None) -> tuple[dict[str, Any] | None, int]:
+        initial_budget = NODE_BUDGET if budget is None else max(0, int(budget))
+        self.budget = initial_budget
+        self._initial_budget = initial_budget
+        self.truncated_events = []
+        self.unsupported_events = []
         tree = self.walk(root_id, depth=0, overrides={}, symbol_stack=(), force_visible=True)
-        return tree, NODE_BUDGET - self.budget
+        if tree:
+            if self.truncated_events:
+                tree["truncated"] = True
+            from figma_extractor.extract.semantic import attach_semantic
+
+            attach_semantic(tree)
+        return tree, initial_budget - self.budget
 
     def walk(
         self,
@@ -468,7 +723,16 @@ class TreeBuilder:
         force_visible: bool = False,
     ) -> dict[str, Any] | None:
         base = self.raw.get(node_id)
-        if base is None or self.budget <= 0:
+        if base is None:
+            return None
+        if self.budget <= 0:
+            self.truncated_events.append(
+                {
+                    "nodeId": node_id,
+                    "reason": "node-budget",
+                    "budget": getattr(self, "_initial_budget", NODE_BUDGET),
+                }
+            )
             return None
         override = overrides.get(node_id)
         raw = {**base, **override} if override else base
@@ -479,21 +743,38 @@ class TreeBuilder:
         node = self.node(node_id, raw)
 
         if depth >= MAX_DEPTH:
+            self.truncated_events.append(
+                {"nodeId": node_id, "reason": "max-depth", "depth": depth}
+            )
+            node["truncated"] = True
             return node
 
         node_type = raw.get("type")
         # Boolean ops ship a resolved outline; drawing the operand children too
         # produces oversized silhouettes on top of the correct shape.
         if node_type == "BOOLEAN_OPERATION" and node.get("paths"):
+            node["childrenOmitted"] = "resolved-outline"
             return node
 
         if node_type == "INSTANCE":
             symbol_id = gid(
                 raw.get("overriddenSymbolID") or (raw.get("symbolData") or {}).get("symbolID")
             )
+            local_overrides = self.override_map(raw)
+            if local_overrides:
+                node["overrides"] = [
+                    {"targetId": target, "keys": sorted(fields)}
+                    for target, fields in sorted(local_overrides.items())
+                ]
+            assignments = raw.get("componentPropAssignments")
+            if isinstance(assignments, list) and assignments:
+                node["componentPropAssignments"] = assignments
+            prop_refs = raw.get("componentPropRefs")
+            if isinstance(prop_refs, list) and prop_refs:
+                node["componentPropRefs"] = prop_refs
             if symbol_id and symbol_id in self.raw and symbol_id not in symbol_stack:
                 merged = {target: dict(fields) for target, fields in overrides.items()}
-                for target, fields in self.override_map(raw).items():
+                for target, fields in local_overrides.items():
                     merged.setdefault(target, {}).update(fields)
                 master = self.walk(
                     symbol_id,
@@ -567,6 +848,8 @@ def build_screen_trees(out: Path) -> dict[str, Any]:
     written = 0
     total_nodes = 0
     used_names: set[str] = set()
+    truncated_records: list[dict[str, Any]] = []
+    unsupported_records: list[dict[str, Any]] = []
     for screen in screens:
         node_id = str(screen.get("id") or "")
         if node_id not in builder.raw:
@@ -582,6 +865,23 @@ def build_screen_trees(out: Path) -> dict[str, Any]:
         page_background = builder.canvas_background.get(str(screen.get("pageId") or ""))
         if page_background:
             tree["pageBackground"] = page_background
+        from figma_extractor.extract.semantic import screen_semantic
+
+        semantic = screen_semantic(screen, tree)
+        if semantic:
+            screen["semantic"] = semantic
+        if builder.truncated_events:
+            truncated_records.append(
+                {
+                    "screenId": node_id,
+                    "tree": f"trees/{candidate}.json",
+                    "nodesWritten": node_count,
+                    "events": list(builder.truncated_events),
+                }
+            )
+        unsupported_records.extend(
+            {**event, "screenId": node_id} for event in builder.unsupported_events
+        )
         write_json(trees_dir / f"{candidate}.json", tree)
         screen["tree"] = f"trees/{candidate}.json"
         screen["slug"] = candidate
@@ -591,7 +891,12 @@ def build_screen_trees(out: Path) -> dict[str, Any]:
 
     write_json(screens_path, screens)
     summary = {"screens": len(screens), "trees": written, "nodes": total_nodes}
-    write_json(trees_dir / "index.json", {"screens": screens, "summary": summary})
+    write_json(
+        trees_dir / "index.json",
+        {"schemaVersion": 2, "screens": screens, "summary": summary},
+    )
+    write_tree_diagnostics(design, truncated_records, unsupported_records)
+    write_layout_diagnostics(design, builder)
     console.print(
         f"[green]Trees[/] {written} screens · {total_nodes:,} render nodes → {trees_dir}"
     )
@@ -599,4 +904,117 @@ def build_screen_trees(out: Path) -> dict[str, Any]:
     # Tall kit boards (Auth - Branded, My Account - Pages, …) become one screen
     # per nested UI so each tree holds exactly one interface.
     summary["split"] = split_screen_boards(out)
+    attach_image_files_to_trees(design)
     return summary
+
+
+def attach_image_files_to_trees(design: Path) -> None:
+    """Join image paint hashes to manifest ``file`` paths after trees are written."""
+    manifest = orjson.loads((design / "assets" / "manifest.json").read_bytes()) if (design / "assets" / "manifest.json").is_file() else []
+    if not isinstance(manifest, list) or not manifest:
+        return
+    by_hash = {
+        str(row.get("hash")): str(row.get("file"))
+        for row in manifest
+        if isinstance(row, dict)
+        and row.get("hash")
+        and row.get("file")
+        and row.get("kind") not in {"vector", "svg"}
+    }
+    if not by_hash:
+        return
+    trees_dir = design / "trees"
+    if not trees_dir.is_dir():
+        return
+    for path in trees_dir.glob("*.json"):
+        if path.name == "index.json":
+            continue
+        tree = orjson.loads(path.read_bytes())
+        if isinstance(tree, dict) and _attach_image_files(tree, by_hash):
+            write_json(path, tree)
+
+
+def _attach_image_files(node: dict[str, Any], by_hash: dict[str, str]) -> bool:
+    changed = False
+    for fill in node.get("fills") or []:
+        if not isinstance(fill, dict) or fill.get("type") != "image":
+            continue
+        hash_name = fill.get("hash")
+        file_path = by_hash.get(str(hash_name)) if hash_name else None
+        if file_path and fill.get("file") != file_path:
+            fill["file"] = file_path
+            changed = True
+    for child in node.get("children") or []:
+        if isinstance(child, dict) and _attach_image_files(child, by_hash):
+            changed = True
+    return changed
+
+
+def write_tree_diagnostics(
+    design: Path,
+    truncated: list[dict[str, Any]],
+    unsupported: list[dict[str, Any]],
+) -> None:
+    diagnostics = design / "diagnostics"
+    write_json(diagnostics / "truncated.json", truncated)
+    write_json(diagnostics / "unsupported.json", unsupported)
+    missing = load_missing_assets(design)
+    write_json(diagnostics / "assets.json", missing)
+
+
+def load_missing_assets(design: Path) -> list[dict[str, Any]]:
+    path = design / "assets" / "missing-hashes.json"
+    if not path.is_file():
+        return []
+    payload = orjson.loads(path.read_bytes())
+    if isinstance(payload, list):
+        return [{"hash": item, "reason": "missing-bytes"} for item in payload if item]
+    if isinstance(payload, dict):
+        rows = payload.get("missing") or payload.get("hashes") or []
+        if isinstance(rows, list):
+            return [
+                {"hash": item.get("hash") if isinstance(item, dict) else item, "reason": "missing-bytes"}
+                for item in rows
+                if item
+            ]
+    return []
+
+
+def write_layout_diagnostics(design: Path, builder: TreeBuilder) -> None:
+    """Count constraint and auto-layout facts present on the raw node stream."""
+    horizontal: dict[str, int] = defaultdict(int)
+    vertical: dict[str, int] = defaultdict(int)
+    counts: dict[str, Any] = {
+        "nodes": 0,
+        "horizontalConstraint": 0,
+        "verticalConstraint": 0,
+        "stackWrap": 0,
+        "stackChildPrimaryGrow": 0,
+        "absolute": 0,
+        "horizontalConstraintValues": {},
+        "verticalConstraintValues": {},
+        "breakpoints": None,
+        "note": (
+            "No breakpoint table is written. Responsive facts come only from "
+            "constraints, wrap, grow, hug, and absolute positioning in the file."
+        ),
+    }
+    for raw in builder.raw.values():
+        counts["nodes"] += 1
+        h = raw.get("horizontalConstraint")
+        v = raw.get("verticalConstraint")
+        if h:
+            counts["horizontalConstraint"] += 1
+            horizontal[str(h)] += 1
+        if v:
+            counts["verticalConstraint"] += 1
+            vertical[str(v)] += 1
+        if raw.get("stackWrap") == "WRAP":
+            counts["stackWrap"] += 1
+        if raw.get("stackChildPrimaryGrow"):
+            counts["stackChildPrimaryGrow"] += 1
+        if raw.get("stackPositioning") == "ABSOLUTE":
+            counts["absolute"] += 1
+    counts["horizontalConstraintValues"] = dict(sorted(horizontal.items()))
+    counts["verticalConstraintValues"] = dict(sorted(vertical.items()))
+    write_json(design / "diagnostics" / "layout.json", counts)

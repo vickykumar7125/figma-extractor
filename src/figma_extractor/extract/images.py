@@ -162,6 +162,8 @@ def build_images(out: Path) -> dict[str, Any]:
         users = usage.get(src.name, [])
         by_ext[ext] += 1
         entry: dict[str, Any] = {
+            "id": src.name,
+            "kind": "raster",
             "hash": src.name,
             "file": f"images/{out_name}",
             "mime": mime,
@@ -183,6 +185,16 @@ def build_images(out: Path) -> dict[str, Any]:
 
     manifest.sort(key=lambda m: (-m["usageCount"], -m["bytes"]))
     write_json(design_dir(out) / "assets" / "manifest.json", manifest)
+    write_json(
+        design_dir(out) / "assets" / "index.json",
+        {
+            "version": 1,
+            "rasters": "manifest.json",
+            "vectors": "vectors.json",
+            "unified": "manifest.json",
+            "missing": "missing-hashes.json",
+        },
+    )
 
     orphan = sorted(set(usage) - {p.name for p in files})
     write_json(design_dir(out) / "assets" / "missing-hashes.json", orphan)

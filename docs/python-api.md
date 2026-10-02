@@ -16,6 +16,7 @@ Keyword-only. Pass exactly one of `file` or `remote`.
 ```python
 extract(file="./design.fig", output="./out")
 extract(file="./design.fig", output="./out", clean=False, keep_intermediates=True)
+extract(file="./design.fig", output="./out", write_toon=True)
 
 extract(remote="ABC123", output="./out", api_key="figd_xxx")
 extract(
@@ -33,6 +34,7 @@ extract(
 | `api_key` | `None` | Required when `remote` is set. The function does not read `FIGMA_API_KEY` |
 | `keep_intermediates` | `False` | Keep `source/` and `extracted/` |
 | `clean` | `True` | Remove previous deliverables under `output` first |
+| `write_toon` | `False` | Also write `catalog/`, `toon/`, and related transport files |
 
 The return value is a dict:
 
@@ -46,8 +48,11 @@ The return value is a dict:
 | `structure` | Counts including `pages`, `screens`, `components` |
 | `images` | Image export summary |
 | `trees` | Tree summary (`trees`, and `split.screensAfter` when a board was split) |
+| `vectors` | Count of shared vector assets written |
 | `flow` | UI-flow summary |
 | `intermediatesKept` | The `keep_intermediates` flag you passed |
+| `transport` | Paths written by `publish_transport` when `write_toon=True`, else `None` |
+| `schemaVersion` | `2` for current extracts |
 
 Inside `extract`, the stages run in this order and can also be called on a directory that already has `extracted/nodes.ndjson`:
 
@@ -59,9 +64,10 @@ from figma_extractor.extract import (
     build_screen_trees,
     build_ui_flow,
 )
+from figma_extractor.extract.vectors import publish_vector_assets
 ```
 
-Call `extract()` for a full run. The stage functions expect the decode cache and write the same files `extract` writes.
+Call `extract()` for a full run. The stage functions expect the decode cache and write the same files `extract` writes. Vector assets and schema markers run after trees and before (or with) the UI-flow pass.
 
 ## info
 
@@ -87,8 +93,9 @@ for screen in details["screens"]:
 | `assets` | `assets/manifest.json` |
 | `text` | `text-content.json` |
 | `uiFlow` | `ui-flow.json`, or `None` when that file is absent |
+| `llm` | Compact annotation status from `document/llm-summary.json` or `llm-annotations.json`, or `None` |
 
-`summary` keys: `pages`, `screens`, `trees`, `components`, `componentSets`, `variables`, `textStyles`, `effects`, `assets`, `uniqueTextStrings`, `suggestedRoutes`.
+`summary` keys: `pages`, `screens`, `trees`, `components`, `componentSets`, `variables`, `textStyles`, `effects`, `assets`, `uniqueTextStrings`, `suggestedRoutes`. When annotations exist, `llmEnabled` and `llmTasks` are added.
 
 `figma_extractor.api.resolve_output_dir` is the same directory check. `resolve_design_dir` is an alias.
 
@@ -125,7 +132,7 @@ payload = annotate("./out", LlmConfig(enabled=False), write=False)
 | `config` | `None` | `LlmConfig`. Omitted means `LlmConfig.from_env()` |
 | `write` | `True` | Write `llm-annotations.json` |
 
-A disabled result has `llmEnabled: false`, empty `llmResults`, and screen rows copied from the extract. An enabled result is produced by the LangGraph workflow (`prepare`, `invoke`, `validate`, `repair`, `finalize`).
+A disabled result has `llmEnabled: false`, empty `llmResults`, and screen rows copied from the extract. An enabled result is produced by the LangGraph workflow (`prepare`, `optimize_toon`, `build_prompt`, `invoke`, `validate`, `repair`, `finalize`). Validated task items are merged onto `screens`, `nodes`, and `assets` under an `llm` key without changing `screens.json`. Incremental runs merge new results with the previous `llm-annotations.json` and keep overlays for screens whose tree hash did not change.
 
 ## LlmConfig
 
@@ -151,6 +158,10 @@ Load order, later wins: built-in defaults, JSON file, environment, then `overrid
 | `max_retries` | `2` | Transport retries in the shared policy |
 | `streaming` | `False` | Requires a provider with streaming |
 | `max_context_chars` | `12000` | Context cap, at least `500` |
+| `max_context_tokens` | `None` | Optional token cap for packed TOON context |
+| `cache_results` | `True` | Disk cache under `.cache/llm` |
+| `write_artifacts` | `True` | Write `prompts/` and synthesis proposals |
+| `toon_compact` | `False` | Short TOON keys in prompts |
 | `max_concurrency` | `1` | Recorded on the policy. Tasks still run sequentially |
 | `failure_limit` | `4` | Consecutive failures before the run stops calling the provider |
 | `validation_attempts` | `2` | One initial attempt plus one repair by default |

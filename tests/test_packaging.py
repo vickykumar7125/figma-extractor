@@ -15,7 +15,7 @@ def test_version_comes_from_the_package():
     assert "version" not in data["project"]
     assert data["project"]["dynamic"] == ["version"]
     assert data["tool"]["setuptools"]["dynamic"]["version"]["attr"] == "figma_extractor.__version__"
-    assert figma_extractor.__version__ == "2.1.0"
+    assert figma_extractor.__version__ == "2.2.0"
     assert data["project"]["name"] == "figma-extractor"
     assert data["project"]["license"] == "MIT"
 

@@ -31,10 +31,17 @@ def annotate(
         from figma_extractor.llm.graph import run_annotation_graph
 
         result = run_annotation_graph(root, active)
+        from figma_extractor.catalog import screen_hashes
+
+        write_json(root / "catalog" / "screen-hashes.json", screen_hashes(root))
     else:
         result = deterministic_annotations(root)
     if write:
         write_json(root / "llm-annotations.json", result)
+        if (root / "catalog" / "index.json").is_file():
+            from figma_extractor.catalog import sync_annotation_transport
+
+            sync_annotation_transport(root, result)
     return result
 
 

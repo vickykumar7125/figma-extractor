@@ -24,7 +24,7 @@ Python::
     print(details["summary"])
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __all__ = ["extract", "info", "annotate", "__version__"]
 
 

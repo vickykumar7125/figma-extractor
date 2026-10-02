@@ -1,0 +1,49 @@
+name: Corpus
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus_path:
+        description: Directory containing .fig archives
+        required: true
+        default: corpus-review
+  schedule:
+    # Mondays 06:00 UTC. Skips cleanly when the corpus directory is absent.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[test]"
+      - name: Resolve corpus path
+        id: corpus
+        env:
+          FIGMA_CORPUS: ${{ github.event.inputs.corpus_path || 'corpus-review' }}
+        run: |
+          echo "path=$FIGMA_CORPUS" >> "$GITHUB_OUTPUT"
+          if [ -d "$FIGMA_CORPUS" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            count=$(find "$FIGMA_CORPUS" -name '*.fig' | wc -l)
+            echo "files=$count" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "files=0" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Skip when corpus is missing
+        if: steps.corpus.outputs.present != 'true'
+        run: |
+          echo "Corpus directory not found: ${{ steps.corpus.outputs.path }}"
+          echo "Add a local corpus directory or pass corpus_path on workflow_dispatch."
+      - name: Run corpus harness
+        if: steps.corpus.outputs.present == 'true'
+        env:
+          FIGMA_CORPUS: ${{ steps.corpus.outputs.path }}
+        run: python tests/test_fig_corpus.py --corpus "$FIGMA_CORPUS"

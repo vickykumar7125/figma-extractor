@@ -54,12 +54,20 @@ REQUIRED_FILES = (
     "component-sets.json",
     "text-content.json",
     "ui-flow.json",
+    "manifest.json",
     "STRUCTURE.md",
     "COMPONENTS.md",
     "LLM.md",
     "tokens/tokens.css",
     "trees/index.json",
     "assets/manifest.json",
+    "assets/vectors.json",
+    "diagnostics/truncated.json",
+    "diagnostics/unsupported.json",
+    "diagnostics/assets.json",
+    "diagnostics/layout.json",
+    "diagnostics/interactions.json",
+    "diagnostics/performance.json",
 )
 
 GIB = 1024**3
@@ -314,6 +322,41 @@ def validate_output(out: Path, source: SourceFacts) -> Checks:
         len(set(route_paths)) == len(route_paths),
         f"{len(route_paths)} routes, {len(set(route_paths))} unique",
     )
+
+    schema_version = tree_index.get("schemaVersion")
+    if schema_version and int(schema_version) >= 2:
+        missing_inferred = [r for r in routes if r.get("inferred") is not True]
+        checks.add(
+            "suggested routes marked inferred",
+            not missing_inferred,
+            f"{len(missing_inferred)} without inferred=true",
+        )
+        checks.add(
+            "interactions array present",
+            isinstance(flow.get("interactions"), list),
+            f"{len(flow.get('interactions') or [])} interactions",
+        )
+        for name in ("truncated.json", "unsupported.json", "assets.json", "layout.json"):
+            path = out / "diagnostics" / name
+            checks.add(
+                f"diagnostics/{name}",
+                path.is_file(),
+                "present" if path.is_file() else "missing",
+            )
+        # Specimen screens should not appear as primary product routes.
+        specimen_slugs = {
+            str(s.get("slug"))
+            for s in screens
+            if isinstance(s.get("semantic"), dict)
+            and s["semantic"].get("kind") in {"specimens", "component-gallery"}
+        }
+        routed_specimens = [r for r in routes if r.get("screen") in specimen_slugs]
+        checks.add(
+            "specimen screens excluded from primary routes",
+            not routed_specimens,
+            f"{len(routed_specimens)} specimen routes",
+            level="warning",
+        )
 
     roles = {s.get("role") for s in screens if s.get("role")}
     checks.add("screens have roles", bool(roles), f"roles: {sorted(r for r in roles if r)}")

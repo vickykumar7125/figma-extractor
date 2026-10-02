@@ -1,6 +1,6 @@
 # Release
 
-Version lives in `figma_extractor.__version__`. `pyproject.toml` reads that attribute. A Git tag `v2.1.0` must match version `2.1.0`.
+Version lives in `figma_extractor.__version__`. `pyproject.toml` reads that attribute. A Git tag `v2.2.0` must match version `2.2.0`.
 
 The package is pure Python, so the release contains:
 

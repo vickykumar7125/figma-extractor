@@ -1,0 +1,31 @@
+{
+  "id": "3:3",
+  "type": "FRAME",
+  "name": "Row",
+  "w": 200,
+  "h": 40,
+  "constraints": {
+    "horizontal": "LEFT_RIGHT",
+    "vertical": "TOP"
+  },
+  "layout": {
+    "dir": "row",
+    "pad": [
+      8,
+      8,
+      8,
+      8
+    ],
+    "padding": {
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "left": 8
+    },
+    "sizing": {
+      "main": "hug"
+    }
+  },
+  "absolute": false,
+  "children": []
+}

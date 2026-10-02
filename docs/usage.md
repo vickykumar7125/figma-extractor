@@ -8,7 +8,7 @@ figma-extractor info --dir ./out
 figma-extractor annotate --dir ./out --llm-disabled
 ```
 
-The same three commands exist as `python -m figma_extractor …`. Every flag is listed on the [CLI](cli.md) page.
+The same three commands exist as `python -m figma_extractor …`. Every flag is listed on the [CLI](cli.md) page. Deliverable layout is on the [Output](output.md) page.
 
 ## Local `.fig`
 
@@ -16,9 +16,22 @@ The same three commands exist as `python -m figma_extractor …`. Every flag is 
 figma-extractor extract --file ./design.fig --output ./out
 figma-extractor extract -f ./design.fig -o ./out --no-clean
 figma-extractor extract -f ./design.fig -o ./out --keep-intermediates
+figma-extractor extract -f ./design.fig -o ./out --toon
 ```
 
-`--no-clean` keeps files already in the output directory. `--keep-intermediates` leaves `source/` and `extracted/` in place after a successful run. The default removes both the previous deliverables and those temporary folders.
+`--no-clean` keeps files already in the output directory. `--keep-intermediates` leaves `source/` and `extracted/` in place after a successful run. `--toon` also writes `catalog/`, `toon/`, and related transport files. Vectors, diagnostics, and schema markers are always written. The default removes both the previous deliverables and the temporary folders.
+
+When you pass a bare `canvas.fig` that sits next to an `images/` folder, those rasters are copied into the extract automatically.
+
+## What you get
+
+- `screens.json` rows include `origin` (`top-level`, `board-child`, or `crop`) and optional `sourceScreenId` / `semantic`
+- Trees expose `layout.padding`, `constraints`, `styleRefs`, `variableRefs`, and shared icons as `vectorRef`
+- `ui-flow.json` keeps guessed routes as `inferred: true` and lists real prototype edges under `interactions`
+- `LLM.md` starts with counts for this extract, then the static read-order guide
+- `screens/<slug>/screen.json` is a reference bundle (tree path, role, route, optional reconstruction hints) without embedding the tree
+
+Schema 1 extracts without those keys remain readable. See [Output](output.md) for the full tree.
 
 ## Remote file
 

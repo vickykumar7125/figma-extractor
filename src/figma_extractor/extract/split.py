@@ -358,6 +358,7 @@ def expand_screen(
     tree: dict[str, Any],
     *,
     depth: int,
+    board_archives: list[tuple[dict[str, Any], dict[str, Any]]] | None = None,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Recursively expand one board into leaf UI screens + their trees."""
     if depth >= MAX_DEPTH:
@@ -366,6 +367,9 @@ def expand_screen(
     targets = split_targets(tree)
     if not targets:
         return [(screen, tree)]
+
+    if board_archives is not None:
+        board_archives.append((dict(screen), tree))
 
     board_name = str(screen.get("name") or tree.get("name") or "board")
     board_id = screen.get("id")
@@ -388,8 +392,17 @@ def expand_screen(
             "boardId": board_id,
             "boards": board_chain,
             "sourceBoard": screen.get("sourceBoard") or board_name,
+            "origin": "board-child",
+            "sourceScreenId": board_id,
         }
-        expanded.extend(expand_screen(child_screen, child_tree, depth=depth + 1))
+        expanded.extend(
+            expand_screen(
+                child_screen,
+                child_tree,
+                depth=depth + 1,
+                board_archives=board_archives,
+            )
+        )
     return expanded
 
 
@@ -505,6 +518,8 @@ def promote_crops(
                     "boards": board_chain,
                     "sourceBoard": screen.get("sourceBoard") or board_name,
                     "crop": True,
+                    "origin": "crop",
+                    "sourceScreenId": screen.get("id"),
                 },
                 crop_tree,
             )
@@ -520,8 +535,11 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
     addressable as standalone screens.
 
     Rewrites ``design/screens.json``, replaces ``design/trees/*.json`` with the
-    leaf trees, and updates ``trees/index.json``.
+    leaf trees, archives pre-split boards under ``trees/boards/``, and updates
+    ``trees/index.json``.
     """
+    from figma_extractor.extract.semantic import attach_semantic, screen_semantic
+
     design = design_dir(out)
     screens_path = design / "screens.json"
     trees_dir = design / "trees"
@@ -530,6 +548,7 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
 
     screens: list[dict[str, Any]] = orjson.loads(screens_path.read_bytes())
     expanded: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+    board_archives: list[tuple[dict[str, Any], dict[str, Any]]] = []
     boards_split = 0
     crops_promoted = 0
     seen_ids: set[str] = set()
@@ -537,17 +556,21 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
         tree_rel = screen.get("tree")
         if not tree_rel:
             # Keep structure-only screens so they are not dropped from screens.json.
+            screen.setdefault("origin", "top-level")
             expanded.append((screen, None))
             continue
         tree_path = design / str(tree_rel)
         if not tree_path.is_file():
+            screen.setdefault("origin", "top-level")
             expanded.append((screen, None))
             continue
         tree = orjson.loads(tree_path.read_bytes())
-        pieces = expand_screen(screen, tree, depth=0)
+        pieces = expand_screen(screen, tree, depth=0, board_archives=board_archives)
         if len(pieces) > 1:
             boards_split += 1
         for piece_screen, piece_tree in pieces:
+            if "origin" not in piece_screen:
+                piece_screen["origin"] = "top-level"
             node_id = str(piece_screen.get("id") or "")
             if node_id:
                 seen_ids.add(node_id)
@@ -556,9 +579,28 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
             crops_promoted += len(crops)
             expanded.extend(crops)
 
-    # Drop old tree files, then write leaf trees with unique slugs.
+    # Drop old leaf tree files, then write leaf trees with unique slugs.
     for path in trees_dir.glob("*.json"):
         path.unlink()
+
+    boards_dir = trees_dir / "boards"
+    if boards_dir.is_dir():
+        for path in boards_dir.glob("*.json"):
+            path.unlink()
+    board_tree_by_id: dict[str, str] = {}
+    used_board_names: set[str] = set()
+    if board_archives:
+        boards_dir.mkdir(parents=True, exist_ok=True)
+        for board_screen, board_tree in board_archives:
+            board_id = str(board_screen.get("id") or "")
+            page_slug = slug(ascii_name(str(board_screen.get("page") or "page")))
+            name_slug = slug(str(board_screen.get("name") or board_id or "board"))
+            candidate = unique_slug(f"{page_slug}__{name_slug}", used_board_names)
+            write_json(boards_dir / f"{candidate}.json", board_tree)
+            rel = f"trees/boards/{candidate}.json"
+            if board_id:
+                board_tree_by_id[board_id] = rel
+            board_screen["boardTree"] = rel
 
     used_names: set[str] = set()
     final_screens: list[dict[str, Any]] = []
@@ -577,6 +619,15 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
         if screen.get("crop"):
             name_slug = f"{name_slug}__crop"
         candidate = unique_slug(f"{page_slug}__{name_slug}", used_names)
+        attach_semantic(tree)
+        semantic = screen_semantic(screen, tree)
+        if semantic:
+            screen["semantic"] = semantic
+        elif "semantic" in screen:
+            screen.pop("semantic", None)
+        source_id = str(screen.get("sourceScreenId") or screen.get("boardId") or "")
+        if source_id and source_id in board_tree_by_id:
+            screen["boardTree"] = board_tree_by_id[source_id]
         write_json(trees_dir / f"{candidate}.json", tree)
         screen["tree"] = f"trees/{candidate}.json"
         screen["slug"] = candidate
@@ -586,12 +637,16 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
     summary = {
         "boardsSplit": boards_split,
         "cropsPromoted": crops_promoted,
+        "boardsArchived": len(board_tree_by_id),
         "screensBefore": len(screens),
         "screensAfter": len(final_screens),
         "trees": len(final_screens),
     }
     write_json(screens_path, final_screens)
-    write_json(trees_dir / "index.json", {"screens": final_screens, "summary": summary})
+    write_json(
+        trees_dir / "index.json",
+        {"schemaVersion": 2, "screens": final_screens, "summary": summary},
+    )
     console.print(
         f"[green]Split[/] {boards_split} boards + {crops_promoted} crops → "
         f"{len(final_screens)} UI screens (from {len(screens)}) → {trees_dir}"

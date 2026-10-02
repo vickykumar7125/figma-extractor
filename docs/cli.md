@@ -14,7 +14,7 @@ figma-extractor --version
 figma-extractor -V
 ```
 
-`--version` / `-V` prints `figma-extractor` plus the package version and exits. The four commands are `extract`, `info`, `annotate`, and `devices`. Running the program with no command prints help.
+`--version` / `-V` prints `figma-extractor` plus the package version and exits. Commands include `extract`, `info`, `annotate`, `toon`, `context-benchmark`, `devices`, and `model`. Running the program with no command prints help.
 
 Errors from these commands print to stderr and exit with status `1`.
 
@@ -41,6 +41,7 @@ Pass exactly one of `--file` or `--remote`. A remote call needs a token from `--
 | `--api-key` |  | `FIGMA_API_KEY` | Figma personal access token |
 | `--clean` / `--no-clean` |  | `--clean` | Wipe previous deliverables under the output directory before writing |
 | `--keep-intermediates` |  | off | Keep `source/` and `extracted/` after a successful run |
+| `--toon` / `--no-toon` |  | off | Also write `catalog/`, `toon/`, `document/`, and related transport files |
 
 On success the CLI prints a table with the output path and counts of pages, screens, trees, and components.
 
@@ -95,7 +96,26 @@ figma-extractor annotate --dir ./out --llm --llm-config ./llm.json
 
 `--llm` and `--llm-disabled` override `LLM_ENABLED`. A flag that you omit does not clear the matching environment variable. Enabled mode requires at least one task (`--llm-task`, `LLM_TASKS`, or `tasks` in the JSON file).
 
-Allowed task names: `semantic_classification`, `screen_classification`, `component_analysis`, `svg_analysis`, `reconstruction_hints`.
+Allowed task names: `semantic_classification`, `screen_classification`, `component_analysis`, `svg_analysis`, `asset_analysis`, `reconstruction_hints`, `interaction_analysis`, `responsive_analysis`, `component_synthesis`, `pattern_synthesis`, `prompt_optimization`.
+
+After a successful LLM run, if `catalog/index.json` exists, `llm` overlays are copied into `screens/<slug>/screen.json`, `catalog/index.json`, and `document/llm-summary.json`.
+
+## toon
+
+Write or refresh the reference catalog and TOON tables for an existing extract. No model call.
+
+```bash
+figma-extractor toon --dir ./out
+```
+
+## context-benchmark
+
+Print JSON vs TOON size estimates for typical annotation task payloads.
+
+```bash
+figma-extractor context-benchmark --dir ./out
+figma-extractor context-benchmark --dir ./out --compact
+```
 
 ## model
 

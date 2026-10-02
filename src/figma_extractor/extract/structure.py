@@ -14,6 +14,25 @@ from figma_extractor.util import ascii_name, gid, iter_ndjson, round_num, slug, 
 console = Console(stderr=True)
 
 
+def slim_prop_def(definition: dict[str, Any]) -> dict[str, Any]:
+    """Copy authored component prop metadata without inventing variant axes."""
+    entry: dict[str, Any] = {
+        "name": definition.get("name"),
+        "type": definition.get("type"),
+    }
+    prop_id = definition.get("id")
+    if prop_id is None and isinstance(definition.get("guid"), dict):
+        prop_id = gid(definition.get("guid"))
+    if prop_id is not None:
+        entry["id"] = str(prop_id)
+    if definition.get("defaultValue") is not None:
+        entry["default"] = definition.get("defaultValue")
+    options = definition.get("variantOptions") or definition.get("options")
+    if isinstance(options, list) and options:
+        entry["options"] = options
+    return entry
+
+
 def slim(node: dict[str, Any]) -> dict[str, Any]:
     parent = node.get("parentIndex") or {}
     size = node.get("size") or {}
@@ -36,8 +55,9 @@ def slim(node: dict[str, Any]) -> dict[str, Any]:
         "componentKey": node.get("componentKey"),
         "text": text_data.get("characters"),
         "propDefs": [
-            {"name": d.get("name"), "type": d.get("type")}
-            for d in (node.get("componentPropDefs") or [])
+            slim_prop_def(definition)
+            for definition in (node.get("componentPropDefs") or [])
+            if isinstance(definition, dict)
         ],
         "symbolRef": gid((symbol_data.get("symbolID"))),
     }
@@ -210,6 +230,7 @@ def build_structure(out: Path) -> dict[str, Any]:
                     "width": child["w"],
                     "height": child["h"],
                     "props": props,
+                    "derivedFromName": True,
                 }
             )
         sets.append(

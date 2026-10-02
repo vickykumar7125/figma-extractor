@@ -16,18 +16,22 @@ Supports today:
 
 - local `.fig` archives (offline kiwi decode — no Figma account needed)
 - remote Figma files via the REST API
-- design tokens: colour styles, variables, typography, effects, plus a `tokens.css` bundle
-- per-screen layout trees (`trees/`) with auto-layout, fills, text, and expanded component instances
-- UI flow index (`ui-flow.json` + `LLM.md`): roles, regions, sample copy, suggested routes
+- design tokens: colour styles, variables, typography, effects (`kind: explicit` when authored), plus a `tokens.css` bundle
+- per-screen layout trees (`trees/`) with auto-layout, constraints, `layout.padding`, fills, text, `styleRefs` / `variableRefs`, and expanded component instances
+- screen lineage: `origin` (`top-level` / `board-child` / `crop`), optional `sourceScreenId`, pre-split boards under `trees/boards/`
+- shared SVG vectors (`vectorRef` / `vectorScale`) and a unified `assets/` index
+- UI flow index (`ui-flow.json` + per-file `LLM.md`): roles, optional `semantic`, regions, inferred routes, prototype interactions
+- per-screen reference bundles at `screens/<slug>/screen.json` (paths and hints, no embedded tree)
 - structure: pages, screens, components, variant sets, and unique text content
-- image assets exported with a manifest
+- image assets with a manifest (sibling `images/` is copied when extracting a bare `canvas.fig`)
+- optional TOON / catalog transport (`--toon` or `figma-extractor toon`)
 - optional annotation (`llm-annotations.json`) when an LLM extra is installed and explicitly enabled
 - fresh rebuilds: each `extract` wipes previous deliverables under the output directory (disable with `--no-clean`)
 - temporary `source/` and `extracted/` removed after extract (`--keep-intermediates` to retain them)
 
 This package does not render screenshots. HTML generation from an extract is an upcoming feature, described at the end of this file.
 
-Commands: `extract`, `info`, `annotate`, `devices`, `model validate`, `model download`. `--version` / `-V` prints the package version.
+Commands: `extract`, `info`, `annotate`, `toon`, `context-benchmark`, `devices`, `model validate`, `model download`. `--version` / `-V` prints the package version.
 
 ## Install
 
@@ -189,13 +193,16 @@ That prints one line, `kind: detail (torch version)`, where kind is `cpu`, `cuda
 ```bash
 figma-extractor extract --file ./design.fig --output ./out
 figma-extractor extract -f ./design.fig -o ./out --no-clean --keep-intermediates
+figma-extractor extract -f ./design.fig -o ./out --toon
 
 figma-extractor extract --remote https://www.figma.com/design/ABC123/My-Kit \
   --output ./out
 figma-extractor extract -r ABC123 -o ./out --api-key "$FIGMA_API_KEY"
 ```
 
-Pass exactly one of `--file` / `-f` or `--remote` / `-r`. `--output` / `-o` is required. `--api-key` reads `FIGMA_API_KEY` when the flag is omitted. A remote extract needs that token. `--clean` is the default; `--no-clean` keeps previous files. `--keep-intermediates` retains `source/` and `extracted/`.
+Pass exactly one of `--file` / `-f` or `--remote` / `-r`. `--output` / `-o` is required. `--api-key` reads `FIGMA_API_KEY` when the flag is omitted. A remote extract needs that token. `--clean` is the default; `--no-clean` keeps previous files. `--keep-intermediates` retains `source/` and `extracted/`. `--toon` also writes `catalog/`, `toon/`, and related transport files (vectors and schema artifacts are always written).
+
+When the path is a bare `canvas.fig` next to an `images/` folder (common after a prior decode), those rasters are copied into the extract automatically.
 
 ### Inspect an extract
 
@@ -294,6 +301,7 @@ from figma_extractor.llm.device import detect_device
 
 extract(file="./design.fig", output="./out")
 extract(file="./design.fig", output="./out", clean=False, keep_intermediates=True)
+extract(file="./design.fig", output="./out", write_toon=True)
 extract(remote="ABC123", output="./out", api_key="figd_xxx")
 
 details = info("./out")          # or info() for the current directory
@@ -331,7 +339,7 @@ print(detect_device().summary())
 
 `from figma_extractor import extract, info` does not import LangChain, LangGraph, or torch. `annotate` imports them only when `enabled=True`.
 
-`extract()` returns `source`, `output`, `design` (same path as `output`), `decode`, `tokens`, `structure`, `images`, `trees`, `flow`, and `intermediatesKept`. It runs `build_tokens`, `build_structure`, `build_images`, `build_screen_trees`, then `build_ui_flow`. Those functions are importable from `figma_extractor.extract` when you already have a decoded `extracted/` tree.
+`extract()` returns `source`, `output`, `design` (same path as `output`), `decode`, `tokens`, `structure`, `images`, `trees`, `vectors`, `flow`, `intermediatesKept`, `transport` (when `write_toon=True`), and `schemaVersion` (2). It runs tokens → structure → images → trees → vector assets → UI flow → schema markers. Those stage functions are importable from `figma_extractor.extract` when you already have a decoded `extracted/` tree.
 
 `info()` returns `directory`, `summary`, `pages`, `screens`, `components`, `componentSets`, `tokens`, `assets`, `text`, and `uiFlow`. Summary keys are `pages`, `screens`, `trees`, `components`, `componentSets`, `variables`, `textStyles`, `effects`, `assets`, `uniqueTextStrings`, and `suggestedRoutes`.
 
@@ -345,39 +353,63 @@ Deliverables land at the output root. There is no nested `design/` folder. `sour
 
 ```
 out/
-├── LLM.md
+├── manifest.json              # schemaVersion: 2, counts, index paths
+├── LLM.md                     # per-extract summary + static read order
 ├── ui-flow.json
 ├── llm-annotations.json       # annotate, not extract
 ├── pages.json
-├── screens.json
+├── screens.json               # origin, role, optional semantic, tree
 ├── components.json
 ├── component-sets.json
 ├── text-content.json
 ├── STRUCTURE.md
 ├── COMPONENTS.md
 ├── trees/
-│   ├── index.json
+│   ├── index.json             # schemaVersion: 2
+│   ├── boards/                # pre-split boards when a board was split
 │   └── <page>__<screen>.json
+├── screens/<slug>/screen.json # reference bundle (no embedded tree)
 ├── tokens/
 │   ├── tokens.css
-│   ├── color-styles.json
-│   ├── color-styles.flat.json
-│   ├── color-styles.conflicts.json
-│   ├── variables.json
-│   ├── typography.json
-│   ├── effects.json
-│   └── fonts.json
+│   └── …
 ├── components/
 │   └── index.json
 ├── assets/
+│   ├── index.json             # rasters + vectors
 │   ├── images/
-│   ├── manifest.json
+│   ├── svg/
+│   ├── manifest.json          # unified raster + vector rows
+│   ├── vectors.json
 │   └── missing-hashes.json
+├── diagnostics/
+│   ├── truncated.json
+│   ├── unsupported.json
+│   ├── assets.json
+│   ├── layout.json            # constraint counts; no invented breakpoints
+│   ├── interactions.json
+│   └── performance.json       # vectorRef path-byte savings
 └── structure/
     └── <page>.md
 ```
 
-`suggestedRoutes` in `ui-flow.json` are slug guesses. A screen role is a keyword match on the name. `--clean` also removes `llm-annotations.json`.
+`suggestedRoutes` in `ui-flow.json` are slug guesses marked `inferred: true`. Specimen/gallery crops are omitted from that list. Prototype edges live under `interactions` (empty when the file has none). Screen `role` matches the **screen name** (kit page titles like “Admin Dashboard” do not force every crop to `dashboard`). `--clean` also removes `llm-annotations.json`.
+
+### Schema versions
+
+| | Schema 1 (older extracts) | Schema 2 (current) |
+| --- | --- | --- |
+| Marker | no `schemaVersion` | `manifest.json` and `trees/index.json` set `schemaVersion: 2` |
+| Layout padding | `layout.pad` = `[top, right, bottom, left]` | same `pad` **plus** `layout.padding` `{top,right,bottom,left}` |
+| Constraints | omitted | `constraints.horizontal` / `.vertical` when present in the file |
+| Style / variable refs | omitted | `styleRefs` / `variableRefs` from `inherit*StyleID` and `variableConsumptionMap` |
+| Screen lineage | omitted | `origin` (`top-level` / `board-child` / `crop`), `sourceScreenId`, `trees/boards/` |
+| Routes | `suggestedRoutes[].path` | same, plus `inferred: true`; separate `interactions`; specimen crops excluded |
+| Assets | raster `manifest.json` | + `id`/`kind`, `vectors.json`, unified index, image paint `file`, `vectorRef` |
+| LLM guide | static identical text | per-extract header + `screens/<slug>/screen.json` bundles |
+| Diagnostics | absent | always written (often empty arrays) |
+
+Schema 1 files remain readable: readers should treat missing schema-2 keys as absent, not errors. Do not invent breakpoints; `diagnostics/layout.json` states that explicitly.
+
 
 ## Project layout
 
@@ -406,7 +438,8 @@ figma-extractor/
     ├── util.py
     ├── fig/                 # .fig unzip and canvas decode
     ├── kiwi/                # kiwi schema and decoder
-    ├── extract/             # tokens, structure, images, trees, flow
+    ├── extract/             # tokens, structure, images, trees, split, flow, vectors, semantic
+    ├── catalog.py           # reference catalog + TOON publish (no LLM)
     ├── llm/                 # optional; not imported by extract
     │   ├── annotate.py
     │   ├── config.py
@@ -416,6 +449,8 @@ figma-extractor/
     │   ├── huggingface_local.py
     │   ├── huggingface_settings.py
     │   ├── prompt_format.py # turns task context into compact text
+    │   ├── patches.py
+    │   ├── merge.py
     │   └── providers/       # one module per provider, imported only when selected
     └── toon/                # included encoder and decoder for that text
 ```

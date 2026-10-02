@@ -96,6 +96,7 @@ def test_graph_accepts_structured_output(tmp_path: Path) -> None:
         tasks=LlmTasks(screen_classification=True),
         max_retries=0,
         backoff_seconds=0,
+        write_artifacts=True,
     )
     result = run_annotation_graph(tmp_path, config, session=chat)
     assert result["llmEnabled"] is True
@@ -104,6 +105,12 @@ def test_graph_accepts_structured_output(tmp_path: Path) -> None:
     assert chat.calls == 1
     assert all(item["ok"] for item in result["validation"])
     assert "M 0 0" not in orjson.dumps(result).decode()
+    assert result["metadata"]["contextStats"]["screen_classification"]["chars"] > 0
+    prompt_path = tmp_path / "prompts" / "tasks" / "screen_classification.json"
+    assert prompt_path.is_file()
+    payload = orjson.loads(prompt_path.read_bytes())
+    assert payload["validation"]["ok"] is True
+    assert result["screens"][0]["llm"]["role"] == "page"
 
 
 def test_graph_repairs_invalid_output_once(tmp_path: Path) -> None:

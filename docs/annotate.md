@@ -27,9 +27,21 @@ figma-extractor annotate --dir ./out \
 | `screen_classification` | Screen role for each listed screen |
 | `component_analysis` | Notes on components in the bounded context |
 | `svg_analysis` | Notes on vector assets. Path `d` commands are omitted from the prompt |
+| `asset_analysis` | Role notes for asset ids already in the manifest |
 | `reconstruction_hints` | Layout recommendations, marked `recommended` |
+| `interaction_analysis` | Route recommendations, marked `recommended` |
+| `responsive_analysis` | Width and height recommendations, marked `recommended` |
+| `component_synthesis` | Proposed components. `origin` must be `llm_proposed` |
+| `pattern_synthesis` | Proposed screen patterns. `origin` must be `llm_proposed` |
+| `prompt_optimization` | A shorter prompt proposal. It is stored and not applied automatically |
 
 Each task is one TOON document: `task`, `context`, and `invalid` when a previous reply failed validation. Repeated rows share one header, for example `screens[#3]{id,name,role,width}:`. The model still replies with one JSON object. Saved annotation files stay JSON. `figma_extractor.toon` encodes that document and can decode it back.
+
+The LangGraph workflow is `prepare` → `optimize_toon` → `build_prompt` → `invoke` → `validate` → optional `repair` → `build_prompt` again → `finalize`. `optimize_toon` packs context to `max_context_chars` and, when set, `max_context_tokens` (tiktoken when installed). `LLM_TOON_COMPACT=true` shortens column names in prompts. Per-task sizes land in `metadata.contextStats`. Prompt files under `prompts/tasks/` get a `validation` block after each validate step. Replies may use a full `items` array or a compact `ops` array (`op`, `target`, `changes`); both normalize to `items` before validation.
+
+```bash
+figma-extractor context-benchmark --dir ./out --compact
+```
 
 Enabled mode with an empty task list exits with an error. Hugging Face chat has no streaming capability, so `LLM_STREAMING=true` is rejected for that provider. The default Hugging Face backend is local: set `HF_LOCAL_MODEL_PATH` and do not pass a Hub id. `HF_BACKEND=remote` is the hosted path. The local install, quantization, and `model validate` command are on the [Hugging Face local](huggingface.md) page.
 
@@ -90,6 +102,10 @@ Applied when the matching CLI flag is omitted.
 | `LLM_TIMEOUT` | Seconds |
 | `LLM_MAX_RETRIES` | Transport retries |
 | `LLM_STREAMING` | `true` or `false` |
+| `LLM_TOON_COMPACT` | Short TOON column names in prompts |
+| `LLM_MAX_CONTEXT_TOKENS` | Optional token cap for packed TOON context |
+| `LLM_CACHE_RESULTS` | Disk cache under `.cache/llm` |
+| `LLM_WRITE_ARTIFACTS` | Write prompt artifacts and proposals |
 | `LLM_TASKS` | Comma-separated task names |
 | `LLM_TASK_SEMANTIC_CLASSIFICATION` | `true` or `false` for that task |
 | `LLM_TASK_SCREEN_CLASSIFICATION` | same pattern |

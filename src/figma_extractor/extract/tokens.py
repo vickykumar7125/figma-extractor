@@ -183,6 +183,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             "name": name,
             "key": style.get("key"),
             "id": gid(style.get("guid")),
+            "kind": "explicit",
             "value": css_paints[0],
         }
         if len(css_paints) > 1:
@@ -223,6 +224,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
                 "id": gid(variable.get("guid")),
                 "name": variable.get("name"),
                 "type": variable.get("variableResolvedType"),
+                "kind": "explicit",
                 "set": (vset or {}).get("name"),
                 "modes": modes,
             }
@@ -245,6 +247,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             "name": name,
             "key": style.get("key"),
             "id": gid(style.get("guid")),
+            "kind": "explicit",
             "fontFamily": font_name.get("family"),
             "fontStyleName": font_name.get("style"),
             "fontWeight": font_weight,
@@ -274,6 +277,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             "name": style["name"].strip(),
             "key": style.get("key"),
             "id": gid(style.get("guid")),
+            "kind": "explicit",
             "raw": [
                 {
                     "type": e.get("type"),

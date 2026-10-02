@@ -11,6 +11,13 @@ DELIVERABLE_DIRS: tuple[str, ...] = (
     "structure",
     "trees",
     "components",
+    "catalog",
+    "toon",
+    "document",
+    "patterns",
+    "screens",
+    "diagnostics",
+    "prompts",
 )
 DELIVERABLE_FILES: tuple[str, ...] = (
     "pages.json",
@@ -19,13 +26,14 @@ DELIVERABLE_FILES: tuple[str, ...] = (
     "component-sets.json",
     "text-content.json",
     "ui-flow.json",
+    "manifest.json",
     "STRUCTURE.md",
     "COMPONENTS.md",
     "LLM.md",
     "llm-annotations.json",
 )
 # Temporary decode cache — removed after extract unless keep_intermediates.
-INTERMEDIATE_DIRS: tuple[str, ...] = ("source", "extracted")
+INTERMEDIATE_DIRS: tuple[str, ...] = ("source", "extracted", ".cache")
 # Older extracts nested everything under design/; still wiped on --clean.
 LEGACY_DIRS: tuple[str, ...] = ("design",)
 

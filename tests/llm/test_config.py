@@ -44,6 +44,14 @@ def test_enabled_requires_a_task(monkeypatch: pytest.MonkeyPatch) -> None:
         LlmConfig.from_env()
 
 
+def test_max_context_tokens_must_be_large_enough(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_ENABLED", "true")
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("LLM_TASKS", "screen_classification")
+    with pytest.raises(LlmConfigError, match="max_context_tokens"):
+        LlmConfig.load(overrides={"max_context_tokens": 10})
+
+
 def test_unknown_provider_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_ENABLED", "true")
     monkeypatch.setenv("LLM_PROVIDER", "not-a-provider")

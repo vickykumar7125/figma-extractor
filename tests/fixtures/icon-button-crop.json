@@ -1,0 +1,129 @@
+{
+  "id": "1:1",
+  "type": "FRAME",
+  "name": "Icon Button / crop",
+  "w": 640,
+  "h": 320,
+  "children": [
+    {
+      "id": "2:0",
+      "type": "INSTANCE",
+      "name": "State=0,Size=md",
+      "instanceOf": "9:9",
+      "w": 16,
+      "h": 16,
+      "paths": [
+        {
+          "d": "M0 0 L8 16 L16 0 Z",
+          "rule": "nonzero"
+        }
+      ],
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#111"
+        }
+      ]
+    },
+    {
+      "id": "2:1",
+      "type": "INSTANCE",
+      "name": "State=1,Size=md",
+      "instanceOf": "9:9",
+      "w": 16,
+      "h": 16,
+      "paths": [
+        {
+          "d": "M0 0 L8 16 L16 0 Z",
+          "rule": "nonzero"
+        }
+      ],
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#111"
+        }
+      ]
+    },
+    {
+      "id": "2:2",
+      "type": "INSTANCE",
+      "name": "State=2,Size=md",
+      "instanceOf": "9:9",
+      "w": 16,
+      "h": 16,
+      "paths": [
+        {
+          "d": "M0 0 L8 16 L16 0 Z",
+          "rule": "nonzero"
+        }
+      ],
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#111"
+        }
+      ]
+    },
+    {
+      "id": "2:3",
+      "type": "INSTANCE",
+      "name": "State=3,Size=md",
+      "instanceOf": "9:9",
+      "w": 16,
+      "h": 16,
+      "paths": [
+        {
+          "d": "M0 0 L8 16 L16 0 Z",
+          "rule": "nonzero"
+        }
+      ],
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#111"
+        }
+      ]
+    },
+    {
+      "id": "2:4",
+      "type": "INSTANCE",
+      "name": "State=4,Size=md",
+      "instanceOf": "9:9",
+      "w": 16,
+      "h": 16,
+      "paths": [
+        {
+          "d": "M0 0 L8 16 L16 0 Z",
+          "rule": "nonzero"
+        }
+      ],
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#111"
+        }
+      ]
+    },
+    {
+      "id": "2:5",
+      "type": "INSTANCE",
+      "name": "State=5,Size=md",
+      "instanceOf": "9:9",
+      "w": 16,
+      "h": 16,
+      "paths": [
+        {
+          "d": "M0 0 L8 16 L16 0 Z",
+          "rule": "nonzero"
+        }
+      ],
+      "fills": [
+        {
+          "type": "solid",
+          "color": "#111"
+        }
+      ]
+    }
+  ]
+}

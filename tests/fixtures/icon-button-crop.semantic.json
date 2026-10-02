@@ -1,0 +1,9 @@
+{
+  "kind": "specimens",
+  "confidence": 0.7,
+  "evidence": [
+    "count:6",
+    "symbol-children",
+    "variant-axis-names"
+  ]
+}

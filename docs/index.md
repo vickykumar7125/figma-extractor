@@ -18,10 +18,12 @@ Commands: `extract`, `info`, `annotate`, `devices`, `model validate`, `model dow
 - Local `.fig` archives (offline kiwi decode, no Figma account needed)
 - Remote Figma files via the REST API
 - Design tokens: colour styles, variables, typography, effects, plus a `tokens.css` bundle
-- Per-screen layout trees (`trees/`) with auto-layout, fills, text, and expanded component instances
-- UI flow index (`ui-flow.json` and `LLM.md`): roles, regions, sample copy, suggested routes
+- Per-screen layout trees (`trees/`) with auto-layout, constraints, `styleRefs` / `variableRefs`, fills, text, and expanded component instances
+- Screen lineage (`origin`, optional `sourceScreenId`, `trees/boards/` when boards split)
+- Shared SVG vectors (`vectorRef`) and a unified `assets/` index
+- UI flow index (`ui-flow.json` and per-file `LLM.md`): roles, regions, sample copy, inferred routes, prototype interactions
 - Structure: pages, screens, components, variant sets, and unique text content
-- Image assets exported with a manifest
+- Image assets exported with a manifest (sibling `images/` copied when extracting a bare `canvas.fig`)
 - Optional annotation (`llm-annotations.json`) when an LLM extra is installed and explicitly enabled
 - Optional local Hugging Face models (`HF_BACKEND=local`, the default for that provider), with remote Hub inference only when `HF_BACKEND=remote`
 - Fresh rebuilds: each `extract` wipes previous deliverables under the output directory (disable with `--no-clean`)

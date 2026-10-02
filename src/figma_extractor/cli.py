@@ -82,6 +82,11 @@ def extract_cmd(
         "--clean/--no-clean",
         help="Wipe previous extract files under OUTPUT before extracting.",
     ),
+    toon: bool = typer.Option(
+        False,
+        "--toon/--no-toon",
+        help="Also write catalog/index.json and toon/*.toon. Does not call a model.",
+    ),
 ) -> None:
     """Extract one local or remote Figma file into OUTPUT/ (flat layout)."""
     try:
@@ -92,6 +97,7 @@ def extract_cmd(
             api_key=api_key,
             keep_intermediates=keep_intermediates,
             clean=clean,
+            write_toon=toon,
         )
     except (FileNotFoundError, ValueError, RuntimeError, OSError) as exc:
         console.print(f"[red]{exc}[/]")
@@ -147,8 +153,17 @@ def info_cmd(
     table.add_column("Item")
     table.add_column("Count", justify="right")
     for key, value in details["summary"].items():
-        table.add_row(key, f"{value:,}")
+        table.add_row(key, f"{value:,}" if isinstance(value, int) else str(value))
     console.print(table)
+    llm = details.get("llm")
+    if isinstance(llm, dict):
+        mode = "enabled" if llm.get("llmEnabled") else "disabled"
+        tasks = ", ".join(llm.get("tasks") or []) or "(none)"
+        console.print(
+            f"[dim]LLM[/] {mode}"
+            + (f" · {llm.get('provider')}/{llm.get('model')}" if llm.get("provider") else "")
+            + f" · tasks: {tasks}"
+        )
 
 
 @app.command("annotate")
@@ -203,6 +218,68 @@ def annotate_cmd(
 
 model_app = typer.Typer(help="Prepare and check a local Hugging Face model directory.")
 app.add_typer(model_app, name="model")
+
+
+@app.command("toon")
+def toon_cmd(
+    directory: Path = typer.Option(
+        Path("."),
+        "--dir",
+        "-d",
+        help="Extract directory. Writes catalog/ and toon/ without calling a model.",
+    ),
+) -> None:
+    """Write a reference catalog and TOON tables for an existing extract."""
+    from figma_extractor.catalog import publish_transport
+
+    try:
+        written = publish_transport(directory)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from None
+    console.print(f"[green]TOON[/] {written['screens']}")
+
+
+@app.command("context-benchmark")
+def context_benchmark_cmd(
+    directory: Path = typer.Option(
+        Path("."),
+        "--dir",
+        "-d",
+        help="Extract directory used to build sample LLM task context.",
+    ),
+    compact: bool = typer.Option(
+        False,
+        "--compact/--no-compact",
+        help="Apply TOON key aliases when measuring compact TOON columns.",
+    ),
+) -> None:
+    """Print JSON vs TOON size estimates for typical annotation tasks."""
+    from figma_extractor.llm.benchmark import benchmark_context
+
+    try:
+        rows = benchmark_context(directory, compact=compact)
+    except (OSError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from None
+    if not rows:
+        console.print("[yellow]No task context could be built from this directory.[/]")
+        raise typer.Exit(0)
+    table = Table(title="Context transport sizes")
+    table.add_column("Task")
+    table.add_column("JSON chars", justify="right")
+    table.add_column("TOON chars", justify="right")
+    table.add_column("Compact TOON", justify="right")
+    table.add_column("TOON tokens", justify="right")
+    for row in rows:
+        table.add_row(
+            str(row["task"]),
+            str(row["json_chars"]),
+            str(row["toon_chars"]),
+            str(row["compact_toon_chars"]),
+            str(row["toon_tokens"]),
+        )
+    console.print(table)
 
 
 @model_app.command("validate")

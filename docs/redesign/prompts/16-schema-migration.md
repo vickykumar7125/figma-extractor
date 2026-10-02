@@ -38,6 +38,8 @@ A schema 1 fixture (current CreBiz tree fragment) still loads with the reader th
 
 README schema section, version fields, corpus required-file list aligned with the contract.
 
+See also `docs/redesign/VALIDATION.md` for the re-extract checklist.
+
 ## Acceptance criteria
 
 An old agent that only opens `trees/*.json` and `screens.json` still works. A new agent can see `schemaVersion`.

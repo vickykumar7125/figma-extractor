@@ -22,7 +22,13 @@ TASK_NAMES: tuple[str, ...] = (
     "screen_classification",
     "component_analysis",
     "svg_analysis",
+    "asset_analysis",
     "reconstruction_hints",
+    "interaction_analysis",
+    "responsive_analysis",
+    "component_synthesis",
+    "pattern_synthesis",
+    "prompt_optimization",
 )
 
 SECRET_FIELDS = frozenset(
@@ -57,7 +63,13 @@ class LlmTasks:
     screen_classification: bool = False
     component_analysis: bool = False
     svg_analysis: bool = False
+    asset_analysis: bool = False
     reconstruction_hints: bool = False
+    interaction_analysis: bool = False
+    responsive_analysis: bool = False
+    component_synthesis: bool = False
+    pattern_synthesis: bool = False
+    prompt_optimization: bool = False
 
     def enabled_names(self) -> list[str]:
         return [name for name in TASK_NAMES if getattr(self, name)]
@@ -88,10 +100,14 @@ class LlmConfig:
     max_retries: int = 2
     streaming: bool = False
     max_context_chars: int = 12_000
+    max_context_tokens: int | None = None
     max_concurrency: int = 1
     failure_limit: int = 4
     validation_attempts: int = 2
     backoff_seconds: float = 0.5
+    cache_results: bool = True
+    write_artifacts: bool = True
+    toon_compact: bool = False
     tasks: LlmTasks = field(default_factory=LlmTasks)
     provider_options: dict[str, str] = field(default_factory=dict)
 
@@ -133,6 +149,8 @@ class LlmConfig:
             raise LlmConfigError("LLM_MAX_TOKENS must be greater than 0.")
         if self.max_context_chars < 500:
             raise LlmConfigError("max_context_chars must be at least 500.")
+        if self.max_context_tokens is not None and self.max_context_tokens < 128:
+            raise LlmConfigError("max_context_tokens must be at least 128 when set.")
         if self.validation_attempts < 1:
             raise LlmConfigError("validation_attempts must be at least 1.")
         if self.max_concurrency < 1:
@@ -169,10 +187,18 @@ class LlmConfig:
             max_retries=int(data.get("max_retries", 2)),
             streaming=parse_bool(data.get("streaming"), default=False),
             max_context_chars=int(data.get("max_context_chars", 12_000)),
+            max_context_tokens=(
+                int(data["max_context_tokens"])
+                if data.get("max_context_tokens") not in (None, "")
+                else None
+            ),
             max_concurrency=int(data.get("max_concurrency", 1)),
             failure_limit=int(data.get("failure_limit", 4)),
             validation_attempts=int(data.get("validation_attempts", 2)),
             backoff_seconds=float(data.get("backoff_seconds", 0.5)),
+            cache_results=parse_bool(data.get("cache_results"), default=True),
+            write_artifacts=parse_bool(data.get("write_artifacts"), default=True),
+            toon_compact=parse_bool(data.get("toon_compact"), default=False),
             tasks=LlmTasks.from_mapping(tasks),
             provider_options=cleaned_options,
         )
@@ -224,6 +250,10 @@ def environment_config() -> dict[str, Any]:
         "LLM_TIMEOUT": "timeout",
         "LLM_MAX_RETRIES": "max_retries",
         "LLM_STREAMING": "streaming",
+        "LLM_CACHE_RESULTS": "cache_results",
+        "LLM_WRITE_ARTIFACTS": "write_artifacts",
+        "LLM_TOON_COMPACT": "toon_compact",
+        "LLM_MAX_CONTEXT_TOKENS": "max_context_tokens",
     }
     for env_name, field_name in mapping.items():
         if env_name in os.environ and os.environ[env_name] != "":
