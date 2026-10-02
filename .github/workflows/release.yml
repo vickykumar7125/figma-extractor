@@ -139,11 +139,16 @@ jobs:
           auto-update-conda: true
           channels: conda-forge
           channel-priority: strict
+          conda-remove-defaults: true
       - name: Install conda-build and anaconda-client
-        run: conda install -y conda-build anaconda-client
+        run: |
+          conda install -y -n build -c conda-forge conda-build anaconda-client
+          command -v conda-build
+          conda-build --version
+          command -v anaconda
       - name: Build noarch package
         run: |
-          conda build conda-recipe --no-anaconda-upload --output-folder conda-bld
+          conda-build conda-recipe --no-anaconda-upload --output-folder conda-bld -c conda-forge
           find conda-bld -type f -name '*.conda' -o -name '*.tar.bz2'
       - name: Upload to Anaconda.org
         env:
