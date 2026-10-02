@@ -4,15 +4,16 @@
 figma-extractor/
 ├── pyproject.toml
 ├── setup.py                 # detects OS and accelerator, installs the max profile
-├── requirements.txt         # core only
+├── requirements.txt         # extraction only, no version pins
 ├── requirements/
-│   ├── base.txt
-│   ├── dev.txt
-│   ├── test.txt
-│   ├── llm.txt              # LangGraph runtime, no provider
-│   ├── providers/           # one file per chat provider, plus all-llm,
-│   │                        # huggingface-local, and huggingface-quant
-│   └── torch/               # cpu, cuda, rocm, xpu, macos
+│   ├── common.txt
+│   ├── cuda132.txt
+│   ├── cuda130.txt
+│   ├── cuda129.txt
+│   ├── cpu.txt
+│   ├── xpu.txt
+│   ├── gpu.txt              # AMD ROCm
+│   └── macos.txt
 ├── mkdocs.yml               # this documentation site
 ├── README.md
 ├── .github/workflows/docs.yml

@@ -1,0 +1,25 @@
+# Shared stack for every accelerator profile. No version pins.
+# setup.py installs one of cuda.txt, cpu.txt, xpu.txt, gpu.txt, or macos.txt,
+# and that file includes this list.
+-r ../requirements.txt
+langgraph
+langchain
+langchain-core
+langchain-openai
+openai
+langchain-anthropic
+anthropic
+langchain-google-genai
+langchain-google-vertexai
+anthropic[vertex]
+langchain-ollama
+ollama
+langchain-huggingface
+langchain-groq
+langchain-xai
+langchain-nvidia-ai-endpoints
+langchain-cohere
+langchain-together
+langchain-deepseek
+transformers
+accelerate

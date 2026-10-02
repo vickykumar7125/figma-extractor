@@ -14,7 +14,7 @@ From a requirements file:
 pip install -r requirements.txt
 ```
 
-That file includes `requirements/base.txt` only. Development tests:
+That file is the extraction list, with no version pins. Development tests:
 
 ```bash
 pip install -e ".[dev]"
@@ -38,7 +38,7 @@ python setup.py --dry-run
 
 | Flag | Effect |
 | --- | --- |
-| *(none)* | Core package, every LLM provider extra (`all-llm`), the matching torch profile, `huggingface-local.txt`, and on CUDA also `huggingface-quant.txt` |
+| *(none)* | Editable package, then `cuda132.txt`, `cuda130.txt`, `cuda129.txt`, `cpu.txt`, `xpu.txt`, `gpu.txt`, or `macos.txt` |
 | `--core` | Extraction only, same result as `pip install -e .` |
 | `--no-llm` | Skip LangChain and provider packages |
 | `--no-torch` | Skip PyTorch and torchvision |
@@ -48,15 +48,15 @@ Detection order:
 
 | Environment | Profile | Requirements file |
 | --- | --- | --- |
-| macOS Apple Silicon | MPS via the default PyPI wheel | `requirements/torch/macos.txt` |
-| Linux or Windows with `nvidia-smi` | CUDA 13.2 | `requirements/torch/cuda.txt` |
-| Linux with ROCm and no NVIDIA GPU | ROCm 7.1 | `requirements/torch/rocm.txt` |
-| Linux or Windows with `xpu-smi` or `sycl-ls` | Intel XPU | `requirements/torch/xpu.txt` |
-| Linux or Windows otherwise | CPU | `requirements/torch/cpu.txt` |
+| macOS Apple Silicon | MPS via the PyPI wheel | `requirements/macos.txt` |
+| Linux or Windows, driver CUDA 13.2 or newer | torch `2.14.1+cu132`, torchvision `0.29.1+cu132` | `requirements/cuda132.txt` |
+| Linux or Windows, driver CUDA 13.0 or 13.1 | torch `2.14.1+cu130`, torchvision `0.29.1+cu130` | `requirements/cuda130.txt` |
+| Linux or Windows, driver CUDA 12.9 | Linux: torch `2.13.0+cu129` / torchvision `0.28.0+cu129`. Windows: torch `2.8.0+cu129` / torchvision `0.23.0+cu129` | `requirements/cuda129.txt` |
+| Linux with ROCm and no NVIDIA GPU | ROCm index `rocm7.1` | `requirements/gpu.txt` |
+| Linux or Windows with `xpu-smi` or `sycl-ls` | Intel XPU index | `requirements/xpu.txt` |
+| Linux or Windows otherwise | CPU index | `requirements/cpu.txt` |
 
-macOS does not receive a CUDA, ROCm, or XPU wheel. macOS Intel is reported and torch is skipped, because the pinned macOS wheels are `macosx_14_0_arm64`. ROCm stays on torch `2.13.0` / torchvision `0.28.0` because that index does not publish torch `2.14.1`. CUDA, CPU, and XPU use torch `2.14.1` and torchvision `0.29.1`, checked on 2026-10-02.
-
-Torch is a second `pip` command. Its index URL would hide PyPI if it were mixed into the package install.
+`python setup.py` reads the CUDA version from `nvidia-smi` and chooses one of the three CUDA files. A driver newer than 13.2 uses `cuda132.txt`. Those three files pin torch and torchvision to the pair published on that index, checked on 2026-10-02. CPU, XPU, GPU, and macOS files have no version pins. macOS Intel is reported and the profile is skipped. The editable package is installed first, then the selected file.
 
 ## Install one feature yourself
 
@@ -68,11 +68,15 @@ pip install -e ".[llm]"             # LangGraph runtime, no chat provider
 pip install -e ".[all-llm]"         # every chat provider, no Transformers or torch
 pip install -e ".[huggingface-local]"
 pip install -e ".[huggingface-quant]"   # NVIDIA CUDA bitsandbytes
-pip install -r requirements/torch/cuda.txt
-pip install -r requirements/providers/huggingface-local.txt
+pip install -r requirements/cuda132.txt
+pip install -r requirements/cuda130.txt
+pip install -r requirements/cuda129.txt
+pip install -r requirements/cpu.txt
+pip install -r requirements/xpu.txt
+pip install -r requirements/gpu.txt
 ```
 
-The same provider lists are under `requirements/providers/`.
+`requirements/common.txt` is the shared chat-provider list. The accelerator files include it.
 
 Credentials stay in the environment. They are not accepted in JSON config files.
 
@@ -92,7 +96,7 @@ Credentials stay in the environment. They are not accepted in JSON config files.
 | `together` | `together` | `TOGETHER_API_KEY` |
 | `deepseek` | `deepseek` | `DEEPSEEK_API_KEY` |
 
-`anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI. Local Hugging Face execution is the default for that provider. It needs `.[huggingface-local]`, a `requirements/torch/` profile, and `HF_LOCAL_MODEL_PATH`. 4-bit and 8-bit additionally need `.[huggingface-quant]` and NVIDIA CUDA. See [Hugging Face local](huggingface.md).
+`anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI. Local Hugging Face execution is the default for that provider. `cuda132.txt`, `cuda130.txt`, and `cuda129.txt` include `bitsandbytes`. The other profiles do not. See [Hugging Face local](huggingface.md).
 
 Default model when `--llm-model` and `LLM_MODEL` are omitted:
 

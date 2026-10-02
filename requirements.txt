@@ -1,2 +1,7 @@
-# Core runtime only. LLM providers and PyTorch are optional profiles.
--r requirements/base.txt
+# Extraction only. No version pins. No LangChain, Transformers, or PyTorch.
+typer
+rich
+orjson
+zstandard
+Pillow
+httpx

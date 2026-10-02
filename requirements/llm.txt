@@ -1,5 +1,0 @@
-# LangGraph runtime without a chat provider.
-# Install one provider file from requirements/providers/ as well.
-langgraph>=1.2,<2
-langchain>=1.4,<2
-langchain-core>=1.6,<2

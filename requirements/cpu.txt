@@ -1,0 +1,6 @@
+# Linux and Windows CPU. No version pins.
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+-r common.txt
+torch
+torchvision

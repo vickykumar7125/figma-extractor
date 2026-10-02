@@ -1,5 +1,0 @@
-# Hugging Face chat integration. Local execution also needs huggingface-local.txt
-# and one requirements/torch file. Remote execution (HF_BACKEND=remote) uses this
-# file plus HF_TOKEN or HUGGINGFACEHUB_API_TOKEN.
--r ../llm.txt
-langchain-huggingface>=1.2,<2

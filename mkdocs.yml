@@ -33,6 +33,9 @@ theme:
 nav:
   - Overview: index.md
   - Install: install.md
+  - Installation: installation.md
+  - Compatibility: compatibility.md
+  - Release: release.md
   - CLI: cli.md
   - Usage: usage.md
   - Annotation: annotate.md

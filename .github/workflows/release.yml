@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish target. none builds artifacts only.
+        type: choice
+        options:
+          - none
+          - testpypi
+          - pypi
+        default: none
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[test]"
+      - run: python -m pytest tests --ignore=tests/test_fig_corpus.py -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - name: Version matches the tag when this run is a tag
+        run: |
+          python - << 'PY'
+          import os
+          from pathlib import Path
+          ref = os.environ.get("GITHUB_REF", "")
+          wheels = list(Path("dist").glob("*.whl"))
+          if not wheels:
+              raise SystemExit("no wheel")
+          version = wheels[0].name.split("-")[1]
+          if ref.startswith("refs/tags/v") and ref.removeprefix("refs/tags/v") != version:
+              raise SystemExit(f"tag {ref} does not match package {version}")
+          if not wheels[0].name.endswith("py3-none-any.whl"):
+              raise SystemExit(f"expected a universal wheel, got {wheels[0].name}")
+          print(version)
+          PY
+      - name: Checksums and manifest
+        run: python scripts/release_manifest.py dist
+      - name: Install the wheel in a clean environment
+        run: |
+          python -m venv /tmp/fe-wheel
+          /tmp/fe-wheel/bin/pip install dist/*.whl
+          /tmp/fe-wheel/bin/figma-extractor --help
+          /tmp/fe-wheel/bin/python -c "import figma_extractor; print(figma_extractor.__version__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" dist/* \
+            --title "$tag" \
+            --notes "Universal wheel and sdist for figma-extractor ${tag#v}. PyTorch and CUDA are installed from the requirements profiles, not from a separate wheel. See docs/release.md."
+
+  publish:
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish != 'none')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'testpypi' && 'testpypi' || 'pypi' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Keep wheels and the sdist for PyPI
+        run: |
+          mkdir -p packages
+          find dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp {} packages/ \;
+      - name: Publish with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages
+          repository-url: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish == 'testpypi') && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
+          attestations: true

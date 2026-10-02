@@ -1,2 +1,0 @@
--r ../llm.txt
-langchain-groq>=1.1,<2

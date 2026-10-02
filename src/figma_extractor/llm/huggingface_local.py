@@ -343,7 +343,8 @@ def require_local_packages() -> None:
             f"Likely cause:\n{names} is not installed.\n\n"
             "Suggested fix:\n"
             "pip install 'figma-extractor[huggingface-local]'\n"
-            "Then install one file from requirements/torch/ as a separate pip command."
+            "Then run python setup.py, or pip install -r requirements/cuda132.txt "
+            "(cuda130.txt, cuda129.txt, cpu.txt, xpu.txt, gpu.txt, or macos.txt)."
         )
 
 

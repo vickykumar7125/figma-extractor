@@ -1,3 +1,0 @@
--r ../llm.txt
-langchain-openai>=1.6,<2
-openai>=1.99,<4

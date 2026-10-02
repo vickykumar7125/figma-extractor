@@ -1,3 +1,0 @@
-# NVIDIA CUDA only. Install huggingface-local.txt and requirements/torch/cuda.txt
-# first. bitsandbytes 4-bit and 8-bit are not claimed for CPU, MPS, ROCm, or XPU.
-bitsandbytes>=0.45,<1

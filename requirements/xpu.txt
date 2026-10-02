@@ -1,0 +1,6 @@
+# Linux and Windows Intel XPU. No version pins.
+--index-url https://download.pytorch.org/whl/xpu
+--extra-index-url https://pypi.org/simple
+-r common.txt
+torch
+torchvision

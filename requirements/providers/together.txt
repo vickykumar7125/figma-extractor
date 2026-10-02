@@ -1,2 +1,0 @@
--r ../llm.txt
-langchain-together>=0.4

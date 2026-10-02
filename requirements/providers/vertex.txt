@@ -1,5 +1,0 @@
-# Gemini on Vertex AI and Claude on Vertex AI.
-# anthropic[vertex] is the Vertex client for Claude. It is not the Anthropic API extra.
--r ../llm.txt
-langchain-google-vertexai>=3.2,<4
-anthropic[vertex]>=1.11,<2

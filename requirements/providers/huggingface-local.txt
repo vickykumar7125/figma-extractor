@@ -1,5 +1,0 @@
-# Local Transformers weights. Install a requirements/torch file as a separate
-# pip command so its --index-url does not hide these PyPI packages.
--r huggingface.txt
-transformers>=4.46,<6
-accelerate>=1.2,<2

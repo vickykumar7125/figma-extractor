@@ -1,16 +1,26 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "figma-extractor"
-version = "2.1.0"
+dynamic = ["version"]
 description = "Extract design tokens, screens, components, and assets from local or remote Figma files"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Vicky Kumar", email = "vickykumar7125@users.noreply.github.com" }]
 keywords = ["figma", "design-tokens", "extractor", "cli", "design-system"]
+classifiers = [
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3 :: Only",
+  "Environment :: Console",
+  "Topic :: Multimedia :: Graphics",
+]
 dependencies = [
   "typer>=0.15,<1",
   "rich>=13,<16",
@@ -133,8 +143,13 @@ figma-extractor = "figma_extractor.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/vickykumar7125/figma-extractor"
+Documentation = "https://vickykumar7125.github.io/figma-extractor/"
 Repository = "https://github.com/vickykumar7125/figma-extractor"
 Issues = "https://github.com/vickykumar7125/figma-extractor/issues"
+Changelog = "https://github.com/vickykumar7125/figma-extractor/releases"
+
+[tool.setuptools.dynamic]
+version = { attr = "figma_extractor.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

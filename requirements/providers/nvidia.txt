@@ -1,2 +1,0 @@
--r ../llm.txt
-langchain-nvidia-ai-endpoints>=1.4,<2

@@ -1,9 +1,0 @@
-# Linux x86_64 ROCm only. Verified 2026-10-02 against
-# https://download.pytorch.org/whl/rocm7.1/
-# The newest pair on this index is torch 2.13.0+rocm7.1 and torchvision 0.28.0+rocm7.1.
-# CUDA 13.2 / torch 2.14.1 is not published here, so this profile does not use cu132.
-# No Windows or macOS wheels. Python 3.10–3.15 (3.11+ for this project).
-# https://pytorch.org/get-started/locally/
---index-url https://download.pytorch.org/whl/rocm7.1
-torch==2.13.0+rocm7.1
-torchvision==0.28.0+rocm7.1

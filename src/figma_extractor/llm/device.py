@@ -26,8 +26,8 @@ def detect_device() -> DeviceStatus:
             kind="unavailable",
             available=False,
             detail=(
-                "torch is not installed. Install one hardware profile from "
-                "requirements/torch/."
+                "torch is not installed. Install requirements/cuda132.txt, cuda130.txt, "
+                "cuda129.txt, cpu.txt, xpu.txt, gpu.txt, or macos.txt."
             ),
         )
     version = getattr(torch, "__version__", None)
@@ -86,7 +86,8 @@ def execution_placement(
     if requested != "auto" and kind != "cpu" and available != kind:
         raise ValueError(
             f"HF_DEVICE={requested} but the runtime reports {available}. "
-            "Install the matching requirements/torch profile or set HF_DEVICE=cpu."
+            "Install the matching requirements file (cpu, cuda, xpu, gpu, or macos) "
+            "or set HF_DEVICE=cpu."
         )
     if device_map not in {"auto", "none", ""}:
         chosen_map: str | None = device_map

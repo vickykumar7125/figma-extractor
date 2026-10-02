@@ -1,0 +1,4 @@
+# macOS Apple Silicon. Wheels come from PyPI. No version pins. No CUDA index.
+-r common.txt
+torch
+torchvision

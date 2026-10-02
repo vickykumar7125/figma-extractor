@@ -31,9 +31,17 @@ Commands: `extract`, `info`, `annotate`, `devices`, `model validate`, `model dow
 
 ## Install
 
-Python 3.11+ is required.
+Python 3.11+ is required. The published package is one universal wheel. Pip selects it on Linux, Windows, and macOS. PyTorch and CUDA are not inside that wheel.
 
-### Default: extraction only
+### From PyPI
+
+```bash
+pip install figma-extractor
+```
+
+Optional extras use the same wheel plus extra packages, for example `pip install "figma-extractor[huggingface]"`. Accelerator-specific PyTorch installs are listed in the [installation guide](https://vickykumar7125.github.io/figma-extractor/installation/).
+
+### From a checkout
 
 ```bash
 pip install .
@@ -45,7 +53,7 @@ From a requirements file:
 pip install -r requirements.txt
 ```
 
-That file includes `requirements/base.txt` only. Development tests:
+That file is the extraction list, with no version pins. Development tests:
 
 ```bash
 pip install -e ".[dev]"
@@ -69,7 +77,7 @@ The installer prints the detected OS, CPU architecture, accelerator, and the pip
 
 | Flag | Effect |
 | --- | --- |
-| *(none)* | Core package, every LLM provider extra (`all-llm`), the matching torch profile, and the local Hugging Face files (`huggingface-local.txt`; `huggingface-quant.txt` when CUDA is detected) |
+| *(none)* | Editable package, then the detected file: `cuda132.txt`, `cuda130.txt`, `cuda129.txt`, `cpu.txt`, `xpu.txt`, `gpu.txt`, or `macos.txt` |
 | `--core` | Extraction only, same result as `pip install -e .` |
 | `--no-llm` | Skip LangChain and provider packages |
 | `--no-torch` | Skip PyTorch and torchvision |
@@ -79,15 +87,15 @@ Detection order:
 
 | Environment | Profile | Requirements file |
 | --- | --- | --- |
-| macOS Apple Silicon | MPS via the default PyPI wheel | `requirements/torch/macos.txt` |
-| Linux or Windows with `nvidia-smi` | CUDA 13.2 | `requirements/torch/cuda.txt` |
-| Linux with ROCm and no NVIDIA GPU | ROCm 7.1 | `requirements/torch/rocm.txt` |
-| Linux or Windows with `xpu-smi` or `sycl-ls` | Intel XPU | `requirements/torch/xpu.txt` |
-| Linux or Windows otherwise | CPU | `requirements/torch/cpu.txt` |
+| macOS Apple Silicon | MPS via the PyPI wheel | `requirements/macos.txt` |
+| Linux or Windows, driver CUDA 13.2 or newer | CUDA 13.2, torch `2.14.1+cu132`, torchvision `0.29.1+cu132` | `requirements/cuda132.txt` |
+| Linux or Windows, driver CUDA 13.0 or 13.1 | CUDA 13.0, torch `2.14.1+cu130`, torchvision `0.29.1+cu130` | `requirements/cuda130.txt` |
+| Linux or Windows, driver CUDA 12.9 | CUDA 12.9. Linux: torch `2.13.0+cu129` / torchvision `0.28.0+cu129`. Windows: torch `2.8.0+cu129` / torchvision `0.23.0+cu129` | `requirements/cuda129.txt` |
+| Linux with ROCm and no NVIDIA GPU | ROCm index `rocm7.1` | `requirements/gpu.txt` |
+| Linux or Windows with `xpu-smi` or `sycl-ls` | Intel XPU index | `requirements/xpu.txt` |
+| Linux or Windows otherwise | CPU index | `requirements/cpu.txt` |
 
-macOS does not receive a CUDA, ROCm, or XPU wheel. macOS Intel is reported and torch is skipped, because the pinned macOS wheels are `macosx_14_0_arm64`. ROCm stays on torch `2.13.0` / torchvision `0.28.0` because that index does not publish torch `2.14.1`. CUDA, CPU, and XPU use torch `2.14.1` and torchvision `0.29.1`, checked on 2026-10-02.
-
-Torch is a second `pip` command. Its index URL would hide PyPI if it were mixed into the package install.
+`python setup.py` reads the CUDA version from `nvidia-smi` and installs `cuda132.txt`, `cuda130.txt`, or `cuda129.txt`. A driver newer than 13.2 still uses `cuda132.txt`. CPU, XPU, GPU, and macOS files have no version pins. The three CUDA files pin torch and torchvision to the pair published on that index, checked on 2026-10-02. `cuda129.txt` uses a different pin on Windows because that index does not publish torch `2.13.0+cu129` for Windows. macOS Intel is reported and the profile is skipped. The editable package is installed from PyPI first, then the selected file.
 
 ### Install one feature yourself
 
@@ -99,11 +107,15 @@ pip install -e ".[llm]"             # LangGraph runtime, no chat provider
 pip install -e ".[all-llm]"         # every chat provider, no Transformers or torch
 pip install -e ".[huggingface-local]"   # ChatHuggingFace plus transformers and accelerate
 pip install -e ".[huggingface-quant]"   # local extra plus bitsandbytes (NVIDIA CUDA)
-pip install -r requirements/torch/cuda.txt
-pip install -r requirements/providers/huggingface-local.txt
+pip install -r requirements/cuda132.txt
+pip install -r requirements/cuda130.txt
+pip install -r requirements/cuda129.txt
+pip install -r requirements/cpu.txt
+pip install -r requirements/xpu.txt
+pip install -r requirements/gpu.txt
 ```
 
-The same provider lists are under `requirements/providers/`.
+`requirements/common.txt` is the shared chat-provider list. The accelerator files include it.
 
 Credentials stay in the environment. They are not accepted in JSON config files.
 
@@ -133,7 +145,7 @@ The default Hugging Face backend is local. `annotate` loads `ChatHuggingFace` fr
 
 ```bash
 pip install -e ".[huggingface-local]"
-pip install -r requirements/torch/cuda.txt    # or cpu.txt, macos.txt, rocm.txt, xpu.txt
+pip install -r requirements/cuda132.txt    # or cuda130.txt, cuda129.txt, cpu.txt, macos.txt, gpu.txt, xpu.txt
 
 figma-extractor model download Qwen/Qwen3-0.6B --dest /models/Qwen3-0.6B
 figma-extractor model validate --path /models/Qwen3-0.6B
@@ -158,7 +170,7 @@ figma-extractor model validate --path /models/Qwen3-0.6B
 | `HF_TOP_K` | unset | Optional sampler cutoff |
 | `HF_REPETITION_PENALTY` | `1.0` | Generation penalty |
 
-4-bit and 8-bit use BitsAndBytes on NVIDIA CUDA (`pip install -e ".[huggingface-quant]"` plus `requirements/torch/cuda.txt`). CPU, MPS, ROCm, and XPU stay full precision. Setting `HF_QUANTIZATION_ON_UNSUPPORTED=fallback` runs full precision and the report says quantization is not active. A local run passes `local_files_only`, so a missing file fails instead of downloading. Copy `.env.example` for the full list. The longer guide is in the docs under Hugging Face local.
+4-bit and 8-bit use BitsAndBytes on NVIDIA CUDA (`cuda132.txt`, `cuda130.txt`, and `cuda129.txt` include `bitsandbytes`, or `pip install -e ".[huggingface-quant]"`). CPU, MPS, ROCm, and XPU stay full precision. Setting `HF_QUANTIZATION_ON_UNSUPPORTED=fallback` runs full precision and the report says quantization is not active. A local run passes `local_files_only`, so a missing file fails instead of downloading. Copy `.env.example` for the full list. The longer guide is in the docs under Hugging Face local.
 
 After torch is installed:
 
@@ -374,15 +386,16 @@ figma-extractor/
 ├── pyproject.toml
 ├── setup.py                 # detects OS and accelerator, installs the max profile
 ├── mkdocs.yml
-├── requirements.txt         # core only
+├── requirements.txt         # extraction only, no version pins
 ├── requirements/
-│   ├── base.txt
-│   ├── dev.txt
-│   ├── test.txt
-│   ├── llm.txt              # LangGraph runtime, no provider
-│   ├── providers/           # one file per chat provider, plus all-llm,
-│   │                        # huggingface-local, and huggingface-quant
-│   └── torch/               # cpu, cuda, rocm, xpu, macos
+│   ├── common.txt           # chat providers, Transformers, Accelerate
+│   ├── cuda132.txt          # NVIDIA CUDA 13.2
+│   ├── cuda130.txt          # NVIDIA CUDA 13.0
+│   ├── cuda129.txt          # NVIDIA CUDA 12.9
+│   ├── cpu.txt
+│   ├── xpu.txt              # Intel
+│   ├── gpu.txt              # AMD ROCm
+│   └── macos.txt
 ├── README.md
 └── src/figma_extractor/
     ├── __main__.py          # python -m figma_extractor

@@ -1,4 +1,4 @@
-"""setup.py selects a torch profile from the host without installing anything."""
+"""setup.py selects one requirements profile from the host without installing."""
 
 from __future__ import annotations
 
@@ -15,46 +15,59 @@ def test_linux_nvidia_selects_cuda(monkeypatch) -> None:
     monkeypatch.setattr(setup, "rocm_present", lambda: False)
     monkeypatch.setattr(setup, "xpu_present", lambda: False)
     assert setup.detect_accelerator("linux", "x86_64") == "cuda"
-    path, note = setup.torch_file_for("cuda", "linux", "x86_64")
+    path, note = setup.profile_for("cuda", "linux", "x86_64", (13, 2))
     assert path is not None
-    assert path.name == "cuda.txt"
+    assert path.name == "cuda132.txt"
+    assert "13.2" in note
+    path, note = setup.profile_for("cuda", "linux", "x86_64", (13, 0))
+    assert path is not None and path.name == "cuda130.txt"
+    path, note = setup.profile_for("cuda", "windows", "amd64", (12, 9))
+    assert path is not None and path.name == "cuda129.txt"
+    assert setup.profile_for("cuda", "linux", "x86_64", (12, 8))[0] is None
 
 
-def test_linux_rocm_without_nvidia_selects_rocm(monkeypatch) -> None:
+def test_linux_rocm_without_nvidia_selects_gpu_file(monkeypatch) -> None:
     monkeypatch.setattr(setup, "nvidia_present", lambda: False)
     monkeypatch.setattr(setup, "rocm_present", lambda: True)
-    assert setup.detect_accelerator("linux", "x86_64") == "rocm"
+    assert setup.detect_accelerator("linux", "x86_64") == "gpu"
+    path, note = setup.profile_for("gpu", "linux", "x86_64")
+    assert path is not None and path.name == "gpu.txt"
 
 
 def test_macos_does_not_select_cuda(monkeypatch) -> None:
     monkeypatch.setattr(setup, "nvidia_present", lambda: True)
-    assert setup.detect_accelerator("darwin", "arm64") == "mps"
-    path, note = setup.torch_file_for("mps", "darwin", "arm64")
+    assert setup.detect_accelerator("darwin", "arm64") == "macos"
+    path, note = setup.profile_for("macos", "darwin", "arm64")
     assert path is not None and path.name == "macos.txt"
-    assert "CUDA" in note
+    assert "PyPI" in note
 
 
-def test_macos_intel_skips_torch() -> None:
-    path, note = setup.torch_file_for("mps", "darwin", "x86_64")
+def test_macos_intel_skips_the_profile() -> None:
+    path, note = setup.profile_for("macos", "darwin", "x86_64")
     assert path is None
     assert "Intel" in note
 
 
-def test_plan_commands_keep_torch_in_a_second_pip_call(monkeypatch) -> None:
+def test_full_plan_installs_the_cuda_file(monkeypatch) -> None:
     monkeypatch.setattr(setup, "detect_accelerator", lambda system, machine: "cuda")
+    monkeypatch.setattr(setup, "cuda_driver_version", lambda: (13, 1))
     plan = setup.build_plan(include_llm=True, include_torch=True)
     commands = setup.pip_commands(plan)
-    assert len(commands) == 4
-    assert commands[0][-1] == ".[all-llm]"
-    assert str(commands[1][-1]).endswith("cuda.txt")
-    assert str(commands[2][-1]).endswith("huggingface-local.txt")
-    assert str(commands[3][-1]).endswith("huggingface-quant.txt")
-    assert "--index-url" not in " ".join(commands[0])
+    assert len(commands) == 2
+    assert commands[0][-2:] == ["-e", "."]
+    assert str(commands[1][-1]).endswith("cuda130.txt")
+    assert "--index-url" not in commands[0]
 
 
-def test_core_plan_has_no_extras(monkeypatch) -> None:
+def test_core_plan_is_the_editable_package_only(monkeypatch) -> None:
     monkeypatch.setattr(setup, "detect_accelerator", lambda system, machine: "cpu")
     plan = setup.build_plan(include_llm=False, include_torch=False)
-    assert plan.extras == ()
-    assert plan.torch_file is None
-    assert setup.pip_commands(plan)[0][-1] == "."
+    assert plan.profile is None
+    assert setup.pip_commands(plan) == [[sys.executable, "-m", "pip", "install", "-e", "."]]
+
+
+def test_xpu_plan_uses_the_xpu_file(monkeypatch) -> None:
+    monkeypatch.setattr(setup, "detect_accelerator", lambda system, machine: "xpu")
+    plan = setup.build_plan(include_llm=True, include_torch=True)
+    assert plan.profile is not None
+    assert plan.profile.name == "xpu.txt"

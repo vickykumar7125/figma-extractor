@@ -24,10 +24,16 @@ Python::
     print(details["summary"])
 """
 
-from figma_extractor.api import extract, info
-
 __version__ = "2.1.0"
-__all__ = ["extract", "info", "__version__"]
+__all__ = ["extract", "info", "annotate", "__version__"]
+
+
+def __getattr__(name):
+    if name in {"extract", "info"}:
+        from figma_extractor.api import extract, info
+
+        return {"extract": extract, "info": info}[name]
+    raise AttributeError(name)
 
 
 def annotate(*args, **kwargs):
