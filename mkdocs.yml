@@ -33,6 +33,7 @@ theme:
 nav:
   - Overview: index.md
   - Install: install.md
+  - CLI: cli.md
   - Usage: usage.md
   - Annotation: annotate.md
   - Python API: python-api.md

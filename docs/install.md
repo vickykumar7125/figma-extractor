@@ -91,6 +91,24 @@ Credentials stay in the environment. They are not accepted in JSON config files.
 
 `anthropic` calls the Anthropic API. `anthropic-vertex` calls Claude on Vertex AI. Local Hugging Face inference (`backend=local`) also needs the torch profile `setup.py` selected, plus `transformers`.
 
+Default model when `--llm-model` and `LLM_MODEL` are omitted:
+
+| Provider id | Default model |
+| --- | --- |
+| `openai` | `gpt-4.1-mini` |
+| `anthropic` | `claude-sonnet-4-5` |
+| `google` | `gemini-2.5-flash` |
+| `vertex` | `gemini-2.5-flash` |
+| `anthropic-vertex` | `claude-haiku-4-5@20251001` |
+| `ollama` | `llama3.2` |
+| `huggingface` | `microsoft/Phi-3-mini-4k-instruct` |
+| `groq` | `llama-3.3-70b-versatile` |
+| `xai` | `grok-3` |
+| `nvidia` | `meta/llama-3.1-70b-instruct` |
+| `cohere` | `command-r-plus` |
+| `together` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
+| `deepseek` | `deepseek-chat` |
+
 After torch is installed:
 
 ```bash

@@ -4,10 +4,12 @@ Extract design tokens, screens, components, and image assets from Figma.
 
 | Surface | Name |
 | --- | --- |
-| CLI / PyPI package | `figma-extractor` |
-| Python import | `figma_extractor` |
+| CLI | `figma-extractor` and `python -m figma_extractor` |
+| Python import | `figma_extractor.extract`, `info`, `annotate` |
 | Max-feature installer | `python setup.py` |
 | Docs | this site |
+
+Commands: `extract`, `info`, `annotate`, `devices`. Flag tables are on the [CLI](cli.md) page. Function signatures and return values are on the [Python API](python-api.md) page.
 
 The default install extracts design data and does not install an LLM provider or PyTorch. `setup.py` detects this machine and installs the richest compatible profile on top of that core.
 

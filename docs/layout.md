@@ -14,6 +14,7 @@ figma-extractor/
 │   └── torch/               # cpu, cuda, rocm, xpu, macos
 ├── mkdocs.yml               # this documentation site
 ├── README.md
+├── .github/workflows/docs.yml
 └── src/figma_extractor/
     ├── __main__.py          # python -m figma_extractor
     ├── api.py               # extract(), info()
