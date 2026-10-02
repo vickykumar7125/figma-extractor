@@ -39,43 +39,31 @@ llm = [
   "langchain-core>=1.6,<2",
 ]
 openai = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-openai>=1.6,<2",
   "openai>=1.99,<4",
 ]
 anthropic = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-anthropic>=1.7,<2",
   "anthropic>=1.11,<2",
 ]
 google = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-google-genai>=4.4,<5",
 ]
 vertex = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-google-vertexai>=3.2,<4",
   "anthropic[vertex]>=1.11,<2",
 ]
 ollama = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-ollama>=1.1,<2",
   "ollama>=0.6,<1",
 ]
 huggingface = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-huggingface>=1.2,<2",
 ]
 huggingface-local = [
@@ -88,39 +76,27 @@ huggingface-quant = [
   "bitsandbytes>=0.45,<1",
 ]
 groq = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-groq>=1.1,<2",
 ]
 xai = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-xai>=1.3,<2",
 ]
 nvidia = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-nvidia-ai-endpoints>=1.4,<2",
 ]
 cohere = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-cohere>=0.6",
 ]
 together = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-together>=0.4",
 ]
 deepseek = [
-  "langgraph>=1.2,<2",
-  "langchain>=1.4,<2",
-  "langchain-core>=1.6,<2",
+  "figma-extractor[llm]",
   "langchain-deepseek>=1.1,<2",
 ]
 all-llm = [

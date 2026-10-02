@@ -113,6 +113,7 @@ def execution_placement(
 
 
 def cuda_supports_bfloat16() -> bool:
+    """True only when the GPU implements bfloat16. Emulation does not count."""
     try:
         import torch
     except ImportError:
@@ -121,7 +122,12 @@ def cuda_supports_bfloat16() -> bool:
     if checker is None:
         return False
     try:
-        return bool(checker())
+        return bool(checker(including_emulation=False))
+    except TypeError:
+        try:
+            return bool(checker())
+        except Exception:
+            return False
     except Exception:
         return False
 

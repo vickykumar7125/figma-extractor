@@ -1,7 +1,9 @@
 """Load one local Transformers model for ChatHuggingFace.
 
-The weight files must already be on disk. This module does not download a
-repository. ``model download`` is the only path that talks to the Hub.
+The caller-facing sequence is ``build_local_plan`` then ``load_pipeline``.
+The plan holds the path, device, dtype, and quantization recipe. Loading
+reuses that plan: prepare the runtime, construct the pipeline, then adapt
+8-bit prompts. ``model download`` is the only path that talks to the Hub.
 """
 
 from __future__ import annotations
@@ -14,7 +16,12 @@ from pathlib import Path
 from typing import Any
 
 from figma_extractor.llm.config import LlmConfig
-from figma_extractor.llm.device import DeviceStatus, detect_device, execution_placement
+from figma_extractor.llm.device import (
+    DeviceStatus,
+    ExecutionPlacement,
+    detect_device,
+    execution_placement,
+)
 from figma_extractor.llm.errors import ModelLoadError
 from figma_extractor.llm.huggingface_settings import HuggingFaceSettings
 
@@ -33,6 +40,9 @@ class LocalLoadPlan:
     quantization_requested: str
     quantization_active: str
     quant_detail: str
+    quant_type: str
+    compute_dtype: str
+    double_quant: bool
     offline: bool
     pipeline_kwargs: dict[str, Any]
     warnings: list[str] = field(default_factory=list)
@@ -218,11 +228,15 @@ def bitsandbytes_installed() -> bool:
     return True
 
 
-def generation_kwargs(config: LlmConfig, settings: HuggingFaceSettings) -> dict[str, Any]:
+def sampling_kwargs(config: LlmConfig, settings: HuggingFaceSettings) -> dict[str, Any]:
+    """Generation flags shared by the local pipeline and the hosted endpoint.
+
+    Sampling flags are omitted when ``do_sample`` is false, so a greedy call
+    does not pass temperature or top-p into a library that will ignore them.
+    """
     max_new = settings.max_new_tokens or config.max_tokens or 512
     kwargs: dict[str, Any] = {
         "max_new_tokens": int(max_new),
-        "return_full_text": False,
         "repetition_penalty": settings.repetition_penalty,
         "do_sample": bool(settings.do_sample),
     }
@@ -234,34 +248,57 @@ def generation_kwargs(config: LlmConfig, settings: HuggingFaceSettings) -> dict[
     return kwargs
 
 
-def build_local_plan(config: LlmConfig, *, device: DeviceStatus | None = None) -> LocalLoadPlan:
-    settings = settings_for(config)
-    if settings.backend != "local":
+def generation_kwargs(config: LlmConfig, settings: HuggingFaceSettings) -> dict[str, Any]:
+    return {"return_full_text": False, **sampling_kwargs(config, settings)}
+
+
+def decide_runtime(
+    settings: HuggingFaceSettings,
+    status: DeviceStatus,
+) -> tuple[ExecutionPlacement, str, str, list[str]]:
+    """Place the model after the quantization decision, from one device status.
+
+    Device kind is known before quantization. Placement then follows the active
+    mode, because a quantized CUDA load uses ``device_map`` and a full-precision
+    load can use a single pipeline device.
+    """
+    preview = execution_placement(
+        status,
+        device=settings.device,
+        device_map="none",
+        dtype=settings.dtype,
+        quantized=False,
+    )
+    active, detail, warnings = quantization_decision(
+        settings,
+        preview.kind,
+        bitsandbytes_installed=bitsandbytes_installed(),
+    )
+    placement = execution_placement(
+        status,
+        device=settings.device,
+        device_map=settings.device_map,
+        dtype=settings.dtype,
+        quantized=active in {"4bit", "8bit"},
+    )
+    return placement, active, detail, warnings
+
+
+def build_local_plan(
+    config: LlmConfig,
+    *,
+    device: DeviceStatus | None = None,
+    settings: HuggingFaceSettings | None = None,
+) -> LocalLoadPlan:
+    resolved = settings if settings is not None else settings_for(config)
+    if resolved.backend != "local":
         raise ModelLoadError("build_local_plan is only for HF_BACKEND=local.")
-    path = resolve_local_path(settings, config.model)
+    path = resolve_local_path(resolved, config.model)
     architecture, chat_template = read_model_directory(path)
-    assert_text_generation(path, architecture, settings.task)
+    assert_text_generation(path, architecture, resolved.task)
     status = device if device is not None else detect_device()
     try:
-        preview = execution_placement(
-            status,
-            device=settings.device,
-            device_map="none",
-            dtype=settings.dtype,
-            quantized=False,
-        )
-        active, detail, warnings = quantization_decision(
-            settings,
-            preview.kind,
-            bitsandbytes_installed=bitsandbytes_installed(),
-        )
-        placement = execution_placement(
-            status,
-            device=settings.device,
-            device_map=settings.device_map,
-            dtype=settings.dtype,
-            quantized=active in {"4bit", "8bit"},
-        )
+        placement, active, detail, warnings = decide_runtime(resolved, status)
     except ValueError as exc:
         raise ModelLoadError(str(exc)) from exc
     if not chat_template:
@@ -271,17 +308,20 @@ def build_local_plan(config: LlmConfig, *, device: DeviceStatus | None = None) -
         )
     return LocalLoadPlan(
         path=path,
-        task=settings.task,
+        task=resolved.task,
         architecture=architecture,
         device_kind=placement.kind,
         device_map=placement.device_map,
         pipeline_device=placement.pipeline_device,
         dtype_name=placement.dtype_name,
-        quantization_requested=settings.quantization,
+        quantization_requested=resolved.quantization,
         quantization_active=active,
         quant_detail=detail,
-        offline=settings.offline,
-        pipeline_kwargs=generation_kwargs(config, settings),
+        quant_type=resolved.quant_type,
+        compute_dtype=resolved.compute_dtype,
+        double_quant=resolved.double_quant,
+        offline=resolved.offline,
+        pipeline_kwargs=generation_kwargs(config, resolved),
         warnings=warnings,
         chat_template=chat_template,
     )
@@ -362,7 +402,7 @@ def torch_dtype(name: str) -> Any:
         raise ModelLoadError(f"Unsupported dtype {name}.") from exc
 
 
-def bitsandbytes_config(settings: HuggingFaceSettings, active: str) -> Any:
+def bitsandbytes_config(plan: LocalLoadPlan) -> Any:
     try:
         from transformers import BitsAndBytesConfig
     except ImportError as exc:
@@ -370,24 +410,51 @@ def bitsandbytes_config(settings: HuggingFaceSettings, active: str) -> Any:
             "Model loading failed.\n\nLikely cause:\ntransformers is installed without BitsAndBytesConfig.\n\n"
             "Suggested fix:\npip install 'figma-extractor[huggingface-local]'"
         ) from exc
-    if active == "8bit":
+    if plan.quantization_active == "8bit":
         return BitsAndBytesConfig(load_in_8bit=True)
-    compute = torch_dtype(settings.compute_dtype)
     return BitsAndBytesConfig(
         load_in_4bit=True,
-        bnb_4bit_quant_type=settings.quant_type,
-        bnb_4bit_compute_dtype=compute,
-        bnb_4bit_use_double_quant=settings.double_quant,
+        bnb_4bit_quant_type=plan.quant_type,
+        bnb_4bit_compute_dtype=torch_dtype(plan.compute_dtype),
+        bnb_4bit_use_double_quant=plan.double_quant,
     )
 
 
-def model_kwargs_for(plan: LocalLoadPlan, settings: HuggingFaceSettings) -> dict[str, Any]:
-    kwargs: dict[str, Any] = {"local_files_only": True}
+def model_kwargs_for(plan: LocalLoadPlan) -> dict[str, Any]:
+    """Weight-load arguments taken only from the plan."""
+    kwargs: dict[str, Any] = {
+        "local_files_only": True,
+        "dtype": torch_dtype(plan.dtype_name),
+    }
     if plan.quantization_active in {"4bit", "8bit"}:
-        kwargs["quantization_config"] = bitsandbytes_config(settings, plan.quantization_active)
-    else:
-        kwargs["dtype"] = torch_dtype(plan.dtype_name)
+        kwargs["quantization_config"] = bitsandbytes_config(plan)
     return kwargs
+
+
+def pipeline_call_kwargs(plan: LocalLoadPlan) -> dict[str, Any]:
+    """Constructor arguments for ``HuggingFacePipeline.from_model_id``."""
+    kwargs: dict[str, Any] = {
+        "model_id": str(plan.path),
+        "task": plan.task,
+        "pipeline_kwargs": plan.pipeline_kwargs,
+        "model_kwargs": model_kwargs_for(plan),
+    }
+    if plan.device_map:
+        kwargs["device_map"] = plan.device_map
+    elif plan.pipeline_device is not None:
+        kwargs["device"] = plan.pipeline_device
+    return kwargs
+
+
+def int8_pad_count(length: int, multiple: int = 16) -> int:
+    """Tokens to add so a prompt length is a multiple of 16.
+
+    The 8-bit CUDA kernel rejects some lengths, including 19. A multiple of 16
+    stays on that kernel instead of the full-precision recovery path.
+    """
+    if length <= 0 or multiple <= 0:
+        return 0
+    return (-length) % multiple
 
 
 def cache_key(plan: LocalLoadPlan) -> tuple[Any, ...]:
@@ -403,39 +470,127 @@ def cache_key(plan: LocalLoadPlan) -> tuple[Any, ...]:
     )
 
 
-def load_pipeline(config: LlmConfig, pipeline_cls: type) -> Any:
-    """Build or reuse one HuggingFacePipeline. Weights stay in process memory."""
+def recover_int8_matmul(impl, recover, left, right, out):
+    """Run an int8 matmul, and use recover when cuBLAS has no kernel for the shape.
+
+    Turing cards reject some prompt lengths with a cuBLAS error that is not the
+    documented "not implemented" code. The arithmetic is the same fallback
+    BitsAndBytes already uses for unaligned dimensions.
+    """
+    try:
+        return impl(left, right, out)
+    except RuntimeError as exc:
+        if "cublasLt" not in str(exc):
+            raise
+        return recover(left, right, out)
+
+
+def install_int8_shape_fallback() -> None:
+    import torch
+    from bitsandbytes.backends.cuda import ops as cuda_ops
+
+    current = cuda_ops._int8_linear_matmul_impl
+    if getattr(current, "_figma_fallback", False):
+        return
+
+    def fallback(left, right, out):
+        def recover(first, second, destination):
+            # BitsAndBytes swaps the arguments inside the kernel. These names are
+            # the ones the caller passed in, before that swap.
+            result = torch.matmul(first.float(), second.float().t()).to(torch.int32)
+            return destination.copy_(result)
+
+        return recover_int8_matmul(current, recover, left, right, out)
+
+    fallback._figma_fallback = True
+    cuda_ops._int8_linear_matmul_impl = fallback
+
+
+def align_int8_prompt(pipeline: Any) -> None:
+    """Left-pad 8-bit prompts so the fast integer kernel can run.
+
+    The mask stays zero on the pad, so those tokens do not change the answer.
+    The pipeline sees the padded length and returns only the new text.
+    """
+    inner = getattr(pipeline, "pipeline", None)
+    model = getattr(inner, "model", None)
+    tokenizer = getattr(inner, "tokenizer", None)
+    if inner is None or not getattr(model, "is_loaded_in_8bit", False):
+        return
+    if getattr(inner.preprocess, "_figma_aligned", False):
+        return
+    original = inner.preprocess
+    pad_id = getattr(tokenizer, "pad_token_id", None)
+    if pad_id is None:
+        pad_id = getattr(tokenizer, "eos_token_id", None) or 0
+
+    def preprocess(*args, **kwargs):
+        import torch
+
+        inputs = original(*args, **kwargs)
+        token_ids = inputs.get("input_ids")
+        if token_ids is None:
+            return inputs
+        extra = int8_pad_count(int(token_ids.shape[-1]))
+        if extra == 0:
+            return inputs
+        inputs["input_ids"] = torch.nn.functional.pad(token_ids, (extra, 0), value=pad_id)
+        mask = inputs.get("attention_mask")
+        if mask is None:
+            mask = torch.ones_like(token_ids)
+        inputs["attention_mask"] = torch.nn.functional.pad(mask, (extra, 0), value=0)
+        return inputs
+
+    preprocess._figma_aligned = True
+    inner.preprocess = preprocess
+
+
+def prepare_quant_runtime(plan: LocalLoadPlan) -> None:
+    """Set process flags that must exist before the weights are constructed."""
+    apply_offline_environment(plan.offline)
+    if plan.quantization_active == "8bit":
+        install_int8_shape_fallback()
+
+
+def finish_quant_runtime(plan: LocalLoadPlan, pipeline: Any) -> None:
+    """Adapt a loaded pipeline. Prompt padding runs after tokenization exists."""
+    if plan.quantization_active == "8bit":
+        align_int8_prompt(pipeline)
+
+
+def load_pipeline(
+    config: LlmConfig,
+    pipeline_cls: type,
+    *,
+    plan: LocalLoadPlan | None = None,
+    settings: HuggingFaceSettings | None = None,
+) -> Any:
+    """Build or reuse one HuggingFacePipeline. Weights stay in process memory.
+
+    Pass ``plan`` when the caller already called ``build_local_plan``. Otherwise
+    the plan is built here, reusing ``settings`` when the caller already parsed them.
+    """
     require_local_packages()
-    plan = build_local_plan(config)
-    key = cache_key(plan)
+    resolved = plan if plan is not None else build_local_plan(config, settings=settings)
+    key = cache_key(resolved)
     cached = PIPELINES.get(key)
     if cached is not None:
         return cached
-    settings = settings_for(config)
-    apply_offline_environment(plan.offline)
-    kwargs: dict[str, Any] = {
-        "model_id": str(plan.path),
-        "task": plan.task,
-        "pipeline_kwargs": plan.pipeline_kwargs,
-        "model_kwargs": model_kwargs_for(plan, settings),
-    }
-    if plan.device_map:
-        kwargs["device_map"] = plan.device_map
-    elif plan.pipeline_device is not None:
-        kwargs["device"] = plan.pipeline_device
+    prepare_quant_runtime(resolved)
     try:
-        pipeline = pipeline_cls.from_model_id(**kwargs)
+        pipeline = pipeline_cls.from_model_id(**pipeline_call_kwargs(resolved))
     except Exception as exc:
         raise ModelLoadError(
             format_model_error(
-                path=plan.path,
+                path=resolved.path,
                 backend="local",
-                device=plan.device_kind,
-                quantization=plan.quantization_active,
+                device=resolved.device_kind,
+                quantization=resolved.quantization_active,
                 cause=f"{type(exc).__name__}: {exc}",
                 fix="Run figma-extractor model validate --path and confirm the files and the torch profile.",
             )
         ) from exc
+    finish_quant_runtime(resolved, pipeline)
     PIPELINES[key] = pipeline
     return pipeline
 

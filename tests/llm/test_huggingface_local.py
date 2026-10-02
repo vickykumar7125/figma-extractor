@@ -173,6 +173,130 @@ def test_env_sets_local_path_only_for_huggingface(tmp_path, monkeypatch) -> None
     assert "model_path" not in other.provider_options
 
 
+def test_greedy_sampling_omits_unused_flags() -> None:
+    from figma_extractor.llm.huggingface_local import sampling_kwargs
+    from figma_extractor.llm.huggingface_settings import HuggingFaceSettings
+
+    config = LlmConfig(enabled=False, provider="huggingface", temperature=0.0)
+    greedy = sampling_kwargs(config, HuggingFaceSettings(do_sample=False, max_new_tokens=8))
+    assert greedy["do_sample"] is False
+    assert "temperature" not in greedy
+    assert "top_p" not in greedy
+
+    sampled = sampling_kwargs(
+        config,
+        HuggingFaceSettings(do_sample=True, max_new_tokens=8, top_p=0.9, top_k=20),
+    )
+    assert sampled["temperature"] == 0.0
+    assert sampled["top_p"] == 0.9
+    assert sampled["top_k"] == 20
+
+
+def test_load_uses_the_plan_it_was_given(tmp_path, monkeypatch) -> None:
+    causal_dir(tmp_path)
+    seen: list[str] = []
+
+    class Pipeline:
+        @classmethod
+        def from_model_id(cls, **kwargs):
+            seen.append(kwargs["model_id"])
+            return object()
+
+    monkeypatch.setattr("figma_extractor.llm.huggingface_local.require_local_packages", lambda: None)
+    monkeypatch.setattr("figma_extractor.llm.huggingface_local.torch_dtype", lambda name: name)
+    config = config_for(tmp_path)
+    plan = build_local_plan(config, device=cpu_status())
+
+    def rebuilt(*_args, **_kwargs):
+        raise AssertionError("the supplied plan was rebuilt")
+
+    monkeypatch.setattr("figma_extractor.llm.huggingface_local.build_local_plan", rebuilt)
+    PIPELINES.clear()
+    loaded = load_pipeline(config, Pipeline, plan=plan)
+    assert seen == [str(plan.path)]
+    assert loaded is load_pipeline(config, Pipeline, plan=plan)
+
+
+def test_int8_prompt_pad_aligns_rejected_lengths() -> None:
+    from figma_extractor.llm.huggingface_local import int8_pad_count
+
+    assert int8_pad_count(19) == 13
+    assert int8_pad_count(16) == 0
+    assert int8_pad_count(32) == 0
+    assert int8_pad_count(1) == 15
+
+
+def test_quantized_kwargs_keep_the_runtime_dtype(tmp_path, monkeypatch) -> None:
+    causal_dir(tmp_path)
+    monkeypatch.setattr(
+        "figma_extractor.llm.huggingface_local.bitsandbytes_installed",
+        lambda: True,
+    )
+    monkeypatch.setattr("figma_extractor.llm.huggingface_local.torch_dtype", lambda name: name)
+    monkeypatch.setattr(
+        "figma_extractor.llm.huggingface_local.bitsandbytes_config",
+        lambda plan: {"mode": plan.quantization_active},
+    )
+    from figma_extractor.llm.huggingface_local import build_local_plan, model_kwargs_for
+
+    config = config_for(tmp_path, quantization="8bit")
+    plan = build_local_plan(config, device=cuda_status())
+    kwargs = model_kwargs_for(plan)
+    assert kwargs["dtype"] == plan.dtype_name
+    assert kwargs["quantization_config"] == {"mode": "8bit"}
+    assert kwargs["local_files_only"] is True
+
+
+def test_int8_matmul_uses_the_fallback_when_cublas_rejects_the_shape() -> None:
+    from figma_extractor.llm.huggingface_local import recover_int8_matmul
+
+    def broken(*_args):
+        raise RuntimeError("cublasLt ran into an error!")
+
+    assert recover_int8_matmul(broken, lambda *_args: "fp32", None, None, None) == "fp32"
+
+
+def test_int8_matmul_keeps_other_runtime_errors() -> None:
+    from figma_extractor.llm.huggingface_local import recover_int8_matmul
+
+    def broken(*_args):
+        raise RuntimeError("out of memory")
+
+    with pytest.raises(RuntimeError, match="out of memory"):
+        recover_int8_matmul(broken, lambda *_args: "fp32", None, None, None)
+
+
+def test_local_prompt_turns_thinking_off() -> None:
+    from figma_extractor.llm.providers.huggingface import render_local_prompt
+
+    class Tokenizer:
+        def __init__(self) -> None:
+            self.kwargs = None
+
+        def apply_chat_template(self, messages, **kwargs):
+            self.kwargs = kwargs
+            assert messages[0]["role"] == "user"
+            return "prompt"
+
+    tokenizer = Tokenizer()
+    text = render_local_prompt(tokenizer, [{"role": "user", "content": "ready"}])
+    assert text == "prompt"
+    assert tokenizer.kwargs["enable_thinking"] is False
+    assert tokenizer.kwargs["add_generation_prompt"] is True
+
+
+def test_local_prompt_falls_back_when_thinking_is_rejected() -> None:
+    from figma_extractor.llm.providers.huggingface import render_local_prompt
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            if "enable_thinking" in kwargs:
+                raise TypeError("unexpected")
+            return "plain"
+
+    assert render_local_prompt(Tokenizer(), [{"role": "user", "content": "ready"}]) == "plain"
+
+
 def test_remote_still_requires_a_token(monkeypatch) -> None:
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACEHUB_API_TOKEN", raising=False)

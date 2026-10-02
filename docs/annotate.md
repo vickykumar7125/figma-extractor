@@ -29,6 +29,8 @@ figma-extractor annotate --dir ./out \
 | `svg_analysis` | Notes on vector assets. Path `d` commands are omitted from the prompt |
 | `reconstruction_hints` | Layout recommendations, marked `recommended` |
 
+Each task is one TOON document: `task`, `context`, and `invalid` when a previous reply failed validation. Repeated rows share one header, for example `screens[#3]{id,name,role,width}:`. The model still replies with one JSON object. Saved annotation files stay JSON. `figma_extractor.toon` encodes that document and can decode it back.
+
 Enabled mode with an empty task list exits with an error. Hugging Face chat has no streaming capability, so `LLM_STREAMING=true` is rejected for that provider. The default Hugging Face backend is local: set `HF_LOCAL_MODEL_PATH` and do not pass a Hub id. `HF_BACKEND=remote` is the hosted path. The local install, quantization, and `model validate` command are on the [Hugging Face local](huggingface.md) page.
 
 ```bash

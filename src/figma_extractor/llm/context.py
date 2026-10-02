@@ -8,6 +8,8 @@ from typing import Any
 
 import orjson
 
+from figma_extractor.llm.prompt_format import context_size
+
 
 def load_json(path: Path, default: Any) -> Any:
     if not path.is_file():
@@ -181,17 +183,16 @@ def collect_vectors(node: dict[str, Any], found: list[dict[str, Any]], budget: i
 
 
 def fit_context(context: dict[str, Any], max_chars: int) -> dict[str, Any]:
-    """Drop trailing list entries until the JSON fits the configured budget."""
-    encoded = json.dumps(context, default=str)
-    if len(encoded) <= max_chars:
+    """Drop trailing list entries until the TOON text fits the configured budget."""
+    if context_size(context) <= max_chars:
         return context
-    fitted = json.loads(encoded)
+    fitted = json.loads(json.dumps(context, default=str))
     for payload in fitted.values():
         if not isinstance(payload, dict):
             continue
         for value in payload.values():
             if isinstance(value, list) and len(value) > 1:
                 value[:] = value[: max(1, len(value) // 2)]
-    if len(json.dumps(fitted, default=str)) > max_chars:
+    if context_size(fitted) > max_chars:
         return {"truncated": True, "tasks": sorted(context)}
     return fitted

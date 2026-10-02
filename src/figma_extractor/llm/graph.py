@@ -17,7 +17,8 @@ from figma_extractor.llm.context import build_task_context, load_json, screen_ro
 from figma_extractor.llm.errors import MissingLlmRuntime
 from figma_extractor.llm.observe import log_event
 from figma_extractor.llm.policy import CircuitBreaker, call_with_policy
-from figma_extractor.llm.schemas import JSON_SCHEMA_HINT, validate_task_payload
+from figma_extractor.llm.prompt_format import prompt_messages
+from figma_extractor.llm.schemas import validate_task_payload
 
 
 def run_annotation_graph(
@@ -235,37 +236,6 @@ def initial_state(directory: Path, config: LlmConfig) -> GraphState:
         "attempts": 0,
         "final": {},
     }
-
-
-def prompt_messages(
-    task: str,
-    payload: dict[str, Any],
-    feedback: list[dict[str, Any]],
-) -> list[dict[str, str]]:
-    problems = [
-        item["problems"]
-        for item in feedback
-        if item.get("task") == task and not item.get("ok")
-    ]
-    correction = ""
-    if problems:
-        correction = " Previous output was invalid: " + json.dumps(problems)
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You annotate a Figma extract that was already decoded deterministically. "
-                "Do not invent colors, spacing, typography, or copy. "
-                "Use only the JSON context. Mark guesses as inferred. "
-                "Reconstruction hints must use kind \"recommended\". "
-                "Reply with one JSON object and no prose: " + JSON_SCHEMA_HINT[task]
-            ),
-        },
-        {
-            "role": "user",
-            "content": json.dumps({"task": task, "context": payload}) + correction,
-        },
-    ]
 
 
 def asset_rows(directory: Path) -> list[dict[str, Any]]:

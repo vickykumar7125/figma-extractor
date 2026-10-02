@@ -158,7 +158,7 @@ figma-extractor model validate --path /models/Qwen3-0.6B
 | `HF_TASK` | `text-generation` | Causal LM task. Other tasks are rejected |
 | `HF_DEVICE` | `auto` | `auto`, `cpu`, `cuda`, `rocm`, `mps`, or `xpu` |
 | `HF_DEVICE_MAP` | `auto` | Applied on CUDA. A forced CPU device does not use it |
-| `HF_DTYPE` | `auto` | CPU uses float32. CUDA uses bfloat16 when the GPU reports it, otherwise float16 |
+| `HF_DTYPE` | `auto` | CPU uses float32. CUDA uses bfloat16 only when the GPU implements it in hardware, otherwise float16 |
 | `HF_QUANTIZATION` | `none` | `none`, `4bit`, or `8bit` |
 | `HF_BNB_4BIT_QUANT_TYPE` | `nf4` | Used only while 4-bit is active |
 | `HF_BNB_4BIT_COMPUTE_DTYPE` | `float16` | 4-bit compute dtype |
@@ -407,15 +407,17 @@ figma-extractor/
     ├── fig/                 # .fig unzip and canvas decode
     ├── kiwi/                # kiwi schema and decoder
     ├── extract/             # tokens, structure, images, trees, flow
-    └── llm/                 # optional; not imported by extract
-        ├── annotate.py
-        ├── config.py
-        ├── factory.py
-        ├── graph.py         # LangGraph: prepare, invoke, validate, repair, finalize
-        ├── device.py
-        ├── huggingface_local.py
-        ├── huggingface_settings.py
-        └── providers/       # one module per provider, imported only when selected
+    ├── llm/                 # optional; not imported by extract
+    │   ├── annotate.py
+    │   ├── config.py
+    │   ├── factory.py
+    │   ├── graph.py         # LangGraph: prepare, invoke, validate, repair, finalize
+    │   ├── device.py
+    │   ├── huggingface_local.py
+    │   ├── huggingface_settings.py
+    │   ├── prompt_format.py # turns task context into compact text
+    │   └── providers/       # one module per provider, imported only when selected
+    └── toon/                # included encoder and decoder for that text
 ```
 
 ## Upcoming: HTML from an extract

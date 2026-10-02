@@ -240,7 +240,7 @@ def model_validate_cmd(
                 "HuggingFacePipeline",
                 get_provider("huggingface"),
             )
-            pipeline = load_pipeline(config, pipeline_cls)
+            pipeline = load_pipeline(config, pipeline_cls, plan=plan)
             footprint = memory_footprint(pipeline)
             text = describe(plan)
             if footprint:

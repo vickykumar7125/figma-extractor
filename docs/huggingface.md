@@ -38,12 +38,12 @@ figma-extractor annotate --dir ./out
 | `HF_QUANTIZATION=none` | Full precision. Default |
 | `HF_QUANTIZATION=4bit` | BitsAndBytes NF4. Lower memory, more numeric error |
 | `HF_QUANTIZATION=8bit` | BitsAndBytes 8-bit. More memory than 4-bit, closer to full precision |
-| `HF_DTYPE=auto` | float32 on CPU. On CUDA, bfloat16 when the GPU reports support, otherwise float16 |
+| `HF_DTYPE=auto` | float32 on CPU. On CUDA, bfloat16 only when the GPU implements it in hardware, otherwise float16. Emulated bfloat16 is not selected. Local chat turns off template reasoning (`enable_thinking=false`) so the generation budget is the answer rather than a `<think>` block. |
 | `HF_DEVICE=cpu` | Force CPU. `device_map=auto` is not applied |
 | `HF_DEVICE=cuda` | Require CUDA. Fails when CUDA is absent |
 | `HF_OFFLINE=true` | Sets `HF_HUB_OFFLINE` and `TRANSFORMERS_OFFLINE` while loading, and `model download` refuses to run |
 
-`HF_BNB_4BIT_QUANT_TYPE`, `HF_BNB_4BIT_COMPUTE_DTYPE`, and `HF_BNB_4BIT_USE_DOUBLE_QUANT` apply when 4-bit is actually active. Local loads always pass `local_files_only=True`. A missing weight file is an error, not a download.
+`HF_BNB_4BIT_QUANT_TYPE`, `HF_BNB_4BIT_COMPUTE_DTYPE`, and `HF_BNB_4BIT_USE_DOUBLE_QUANT` apply when 4-bit is actually active. Local loads always pass `local_files_only=True`. A missing weight file is an error, not a download. On some Turing GPUs, cuBLAS rejects an 8-bit matrix shape. Prompts are left-padded to a multiple of 16, with those positions masked, so the fast kernel is used. A remaining rejected shape uses the same full-precision multiplication BitsAndBytes already uses for unaligned dimensions. The loaded layers stay 8-bit. Quantized loads keep the runtime dtype, so a card without hardware bfloat16 does not cast bfloat16 weights on every layer.
 
 The pipeline is cached in the process. A second `annotate` with the same path, dtype, and quantization reuses it.
 
@@ -93,4 +93,4 @@ Active quantization in `figma-extractor model validate` is `none` unless 4-bit o
 
 ## What changed
 
-Hosted inference used to be the default (`backend=endpoint`). The default is now `local`. Remote inference remains behind `HF_BACKEND=remote`. Loading, dtype, device, quantization, and offline flags live in `huggingface_settings.py`, `device.execution_placement`, and `huggingface_local.py`. The graph still receives a `LangChainSession` and does not construct Transformers itself.
+Hosted inference used to be the default (`backend=endpoint`). The default is now `local`. Remote inference remains behind `HF_BACKEND=remote`. Settings are parsed once. `build_local_plan` records path, device, dtype, and the quantization recipe. `load_pipeline` reuses that plan: prepare the runtime, construct the pipeline, then adapt 8-bit prompts. `model validate --load` passes the plan it already built. The graph still receives a `LangChainSession` and does not construct Transformers itself.

@@ -8,7 +8,6 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any, Protocol
 
 from figma_extractor.llm.config import LlmConfig
-from figma_extractor.llm.schemas import JSON_SCHEMA_HINT
 
 
 class ChatSession(Protocol):
@@ -42,7 +41,7 @@ class LangChainSession:
             *messages,
             {
                 "role": "user",
-                "content": "Reply with JSON only, matching " + JSON_SCHEMA_HINT[task],
+                "content": "Reply with the JSON object from the system message and no prose.",
             },
         ]
         message = self.model.invoke(to_langchain_messages(instructed))
