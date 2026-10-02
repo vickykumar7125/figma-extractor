@@ -43,6 +43,12 @@ Python 3.11+ is required. The published package is one universal wheel. Pip sele
 pip install figma-extractor
 ```
 
+### From Anaconda.org (conda)
+
+```bash
+conda install -c vickykumar7125 figma-extractor
+```
+
 Optional extras use the same wheel plus extra packages, for example `pip install "figma-extractor[huggingface]"`. Accelerator-specific PyTorch installs are listed in the [installation guide](https://vickykumar7125.github.io/figma-extractor/installation/).
 
 ### From a checkout

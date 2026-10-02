@@ -11,7 +11,7 @@ Extract design tokens, screens, components, and image assets from Figma.
 
 Commands: `extract`, `info`, `annotate`, `devices`, `model validate`, `model download`. Flag tables are on the [CLI](cli.md) page. Local Hugging Face models are on the [Hugging Face local](huggingface.md) page. Function signatures and return values are on the [Python API](python-api.md) page.
 
-`pip install figma-extractor` extracts design data and does not install an LLM provider or PyTorch. The wheel is `py3-none-any`. `setup.py`, from a checkout, installs the richest PyTorch profile for this machine on top of that core.
+`pip install figma-extractor` or `conda install -c vickykumar7125 figma-extractor` extracts design data and does not install an LLM provider or PyTorch. The wheel is `py3-none-any`; the conda package is `noarch`. `setup.py`, from a checkout, installs the richest PyTorch profile for this machine on top of that core.
 
 ## What it supports today
 

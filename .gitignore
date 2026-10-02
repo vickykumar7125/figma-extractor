@@ -13,6 +13,7 @@ __pycache__/
 dist/
 .pypirc
 build/
+conda-bld/
 site/
 .venv/
 *.pyc
