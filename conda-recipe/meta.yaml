@@ -1,0 +1,55 @@
+{% set name = "figma-extractor" %}
+{% set version = "2.2.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  entry_points:
+    - figma-extractor = figma_extractor.cli:app
+
+requirements:
+  host:
+    - python >=3.11
+    - pip
+    - setuptools >=77
+    - wheel
+  run:
+    - python >=3.11
+    - typer >=0.15,<1
+    - rich >=13,<16
+    - orjson >=3.10
+    - zstandard >=0.23
+    - pillow >=11
+    - httpx >=0.27
+
+test:
+  imports:
+    - figma_extractor
+  commands:
+    - figma-extractor --help
+    - python -c "import figma_extractor; assert figma_extractor.__version__ == '{{ version }}'"
+  requires:
+    - pip
+
+about:
+  home: https://github.com/vickykumar7125/figma-extractor
+  license: MIT
+  license_file: LICENSE
+  summary: Extract design tokens, screens, components, and assets from Figma
+  description: |
+    Offline kiwi decode for local .fig archives and remote Figma REST extracts.
+    Writes schema-2 trees, tokens, vectors, UI flow, and optional LLM annotations.
+  doc_url: https://vickykumar7125.github.io/figma-extractor/
+  dev_url: https://github.com/vickykumar7125/figma-extractor
+
+extra:
+  recipe-maintainers:
+    - vickykumar7125

@@ -1,6 +1,6 @@
 # Release
 
-Version lives in `figma_extractor.__version__`. `pyproject.toml` reads that attribute. A Git tag `v2.2.0` must match version `2.2.0`.
+Version lives in `figma_extractor.__version__`. `pyproject.toml` reads that attribute. A Git tag `v2.2.1` must match version `2.2.1`.
 
 The package is pure Python, so the release contains:
 
@@ -8,6 +8,7 @@ The package is pure Python, so the release contains:
 - `figma_extractor-<version>.tar.gz`
 - `SHA256SUMS`
 - `release-manifest.json`
+- conda `noarch` package on Anaconda.org (`vickykumar7125/figma-extractor`)
 
 There is no CUDA wheel, CPU wheel, or XPU wheel. Those accelerators are requirements files for PyTorch.
 
@@ -22,8 +23,22 @@ Pushing a tag `v*` runs `.github/workflows/release.yml`:
 5. Installs the wheel in a clean virtualenv and runs `figma-extractor --help`.
 6. Creates a GitHub Release with those files.
 7. Publishes the wheel and sdist to PyPI.
+8. Builds `conda-recipe/` as a noarch package and uploads it to Anaconda.org user `vickykumar7125`.
 
-The API token is not stored in the repository or the workflow file. The publish job reads the GitHub Actions secret `PYPI_API_TOKEN` inside the `pypi` environment. A brand-new PyPI project cannot be created by Trusted Publishing until a pending publisher is saved on the PyPI website, so this first release uses that secret. After the project exists, add the trusted publisher below, delete `PYPI_API_TOKEN`, and remove the `password` input from `release.yml` so later tags use OpenID Connect only.
+The API tokens are not stored in the repository or the workflow file. The publish job reads GitHub Actions secrets `PYPI_API_TOKEN` (environment `pypi`) and `ANACONDA_API_TOKEN` (repository secret). Never commit those values.
+
+## Conda / Anaconda
+
+```bash
+conda install -c vickykumar7125 figma-extractor
+```
+
+Local build from a checkout:
+
+```bash
+conda build conda-recipe -c conda-forge --output-folder ./conda-bld
+ANACONDA_API_TOKEN=… anaconda --site anaconda.org upload -u vickykumar7125 ./conda-bld/noarch/figma-extractor-*.conda
+```
 
 ## Trusted publisher
 
@@ -38,7 +53,7 @@ On PyPI, add a trusted publisher for this repository:
 
 Create the GitHub environment `pypi` before the first tag. For a rehearsal, run the Release workflow manually and choose `testpypi`. That uses the environment `testpypi` and `https://test.pypi.org/legacy/`. Add a matching trusted publisher on TestPyPI.
 
-If a PyPI token was pasted into a chat, issue tracker, or commit, revoke it on PyPI and create a new one only in a local password store. Do not put it in a workflow file.
+If a PyPI or Anaconda token was pasted into a chat, issue tracker, or commit, revoke it and create a new one only in a local password store or GitHub secret. Do not put it in a workflow file.
 
 ## Local check
 
@@ -47,6 +62,7 @@ python -m pip install build twine
 python -m build
 twine check dist/*
 python scripts/release_manifest.py dist
+conda build conda-recipe -c conda-forge --output-folder ./conda-bld
 ```
 
-`python setup.py` installs a machine profile. It is not the build backend and it does not upload to PyPI.
+`python setup.py` installs a machine profile. It is not the build backend and it does not upload to PyPI or Anaconda.

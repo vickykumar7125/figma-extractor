@@ -6,6 +6,9 @@ Python 3.11+ is required.
 
 ```bash
 pip install .
+# or published package:
+pip install figma-extractor
+conda install -c vickykumar7125 figma-extractor
 ```
 
 From a requirements file:
