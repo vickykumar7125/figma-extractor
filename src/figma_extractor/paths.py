@@ -22,6 +22,7 @@ DELIVERABLE_FILES: tuple[str, ...] = (
     "STRUCTURE.md",
     "COMPONENTS.md",
     "LLM.md",
+    "llm-annotations.json",
 )
 # Temporary decode cache — removed after extract unless keep_intermediates.
 INTERMEDIATE_DIRS: tuple[str, ...] = ("source", "extracted")

@@ -17,7 +17,7 @@ console = Console(stderr=True)
 
 ScreenRole = str
 
-_ROLE_KEYWORDS: dict[ScreenRole, tuple[str, ...]] = {
+ROLE_KEYWORDS: dict[ScreenRole, tuple[str, ...]] = {
     "auth": (
         "login",
         "log in",
@@ -59,7 +59,7 @@ _ROLE_KEYWORDS: dict[ScreenRole, tuple[str, ...]] = {
     ),
 }
 
-_DEMO_PAGE_NAMES = frozenset(
+DEMO_PAGE_NAMES = frozenset(
     {
         "accordion",
         "alert",
@@ -86,7 +86,7 @@ _DEMO_PAGE_NAMES = frozenset(
     }
 )
 
-_REGION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+REGION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("nav", re.compile(r"\b(nav|navigation|navbar|topbar|appbar|app-bar|breadcrumb)\b", re.I)),
     ("sidebar", re.compile(r"\b(sidebar|side-bar|side nav|sidenav|rail)\b", re.I)),
     ("menu", re.compile(r"\b(menu|menubar|context menu|dropdown menu)\b", re.I)),
@@ -98,23 +98,23 @@ _REGION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("drawer", re.compile(r"\b(drawer|sheet|slide.?over|off.?canvas)\b", re.I)),
 )
 
-_FORM_HINTS = re.compile(
+FORM_HINTS = re.compile(
     r"\b(input|textfield|text field|textarea|select|checkbox|radio|form|field|datepicker|"
     r"combobox|switch|slider)\b",
     re.I,
 )
 
-_ROUTE_PREFIX_RE = re.compile(
+ROUTE_PREFIX_RE = re.compile(
     r"^(?:ecommerce|e-commerce|user|users|admin|app|page|screen|view|application|"
     r"dashboard|account|settings|auth|login|academy|invoice|calendar|chat|email|"
     r"kanban|logistics|crm|analytics)\s*[-–—:/]\s*",
     re.I,
 )
 
-_BFS_NODE_CAP = 800
-_TEXT_CAP = 15
-_TEXT_MAX_LEN = 80
-_COMPONENT_CAP = 40
+BFS_NODE_CAP = 800
+TEXT_CAP = 15
+TEXT_MAX_LEN = 80
+COMPONENT_CAP = 40
 
 
 def infer_role(name: str, page: str = "") -> ScreenRole:
@@ -126,29 +126,29 @@ def infer_role(name: str, page: str = "") -> ScreenRole:
     # Only a known demo/component page implies a gallery. Matching a screen name
     # against its own page name must not do this: pages named after their screen
     # ("Dashboard", "Settings", "Landing Page") are ordinary product pages.
-    if page_lower in _DEMO_PAGE_NAMES:
+    if page_lower in DEMO_PAGE_NAMES:
         return "component-gallery"
 
-    for role, keywords in _ROLE_KEYWORDS.items():
+    for role, keywords in ROLE_KEYWORDS.items():
         if role == "component-gallery":
             continue
         if any(keyword in combined for keyword in keywords):
             return role
 
-    if any(keyword in combined for keyword in _ROLE_KEYWORDS["component-gallery"]):
+    if any(keyword in combined for keyword in ROLE_KEYWORDS["component-gallery"]):
         return "component-gallery"
 
     return "page" if page_lower else "other"
 
 
 def infer_region_role(name: str) -> str | None:
-    for role, pattern in _REGION_PATTERNS:
+    for role, pattern in REGION_PATTERNS:
         if pattern.search(name):
             return role
     return None
 
 
-def _truncate_text(text: str, max_len: int) -> str:
+def truncate_text(text: str, max_len: int) -> str:
     cleaned = " ".join(text.split())
     if len(cleaned) <= max_len:
         return cleaned
@@ -167,7 +167,7 @@ def scan_tree(tree: dict[str, Any]) -> dict[str, Any]:
     regions: list[dict[str, Any]] = []
     seen_region_keys: set[str] = set()
 
-    def _add_region(node: dict[str, Any]) -> None:
+    def add_region(node: dict[str, Any]) -> None:
         nonlocal has_nav, has_sidebar
         child_name = str(node.get("name") or "")
         region_role = infer_region_role(child_name)
@@ -192,13 +192,13 @@ def scan_tree(tree: dict[str, Any]) -> dict[str, Any]:
 
     # Regions: root children + one level deeper (Menu/Nav often nest under Wrapper).
     for child in tree.get("children") or []:
-        _add_region(child)
+        add_region(child)
         for grand in child.get("children") or []:
-            _add_region(grand)
+            add_region(grand)
 
     queue: deque[dict[str, Any]] = deque([tree])
     visited = 0
-    while queue and visited < _BFS_NODE_CAP:
+    while queue and visited < BFS_NODE_CAP:
         node = queue.popleft()
         visited += 1
 
@@ -211,23 +211,23 @@ def scan_tree(tree: dict[str, Any]) -> dict[str, Any]:
         if region_role == "sidebar":
             has_sidebar = True
 
-        if _FORM_HINTS.search(node_name):
+        if FORM_HINTS.search(node_name):
             has_form = True
 
         instance_of = node.get("instanceOf")
         if instance_of:
             component_key = str(instance_of)
-            if component_key not in seen_components and len(components_used) < _COMPONENT_CAP:
+            if component_key not in seen_components and len(components_used) < COMPONENT_CAP:
                 seen_components.add(component_key)
                 components_used.append(component_key)
-            if _FORM_HINTS.search(node_name):
+            if FORM_HINTS.search(node_name):
                 has_form = True
         elif node_type in ("INSTANCE", "SYMBOL", "COMPONENT"):
             component_key = node_name or str(node.get("id") or "")
             if (
                 component_key
                 and component_key not in seen_components
-                and len(components_used) < _COMPONENT_CAP
+                and len(components_used) < COMPONENT_CAP
             ):
                 seen_components.add(component_key)
                 components_used.append(component_key)
@@ -240,9 +240,9 @@ def scan_tree(tree: dict[str, Any]) -> dict[str, Any]:
         else:
             content = ""
 
-        if content and content not in seen_texts and len(texts) < _TEXT_CAP:
+        if content and content not in seen_texts and len(texts) < TEXT_CAP:
             seen_texts.add(content)
-            texts.append(_truncate_text(content, _TEXT_MAX_LEN))
+            texts.append(truncate_text(content, TEXT_MAX_LEN))
 
         for child in node.get("children") or []:
             queue.append(child)
@@ -259,7 +259,7 @@ def scan_tree(tree: dict[str, Any]) -> dict[str, Any]:
 
 def suggest_route_path(screen_name: str, page_name: str, role: ScreenRole) -> str:
     """Suggest a slug-based route from a screen name."""
-    stripped = _ROUTE_PREFIX_RE.sub("", screen_name.strip())
+    stripped = ROUTE_PREFIX_RE.sub("", screen_name.strip())
     parts = [part.strip() for part in re.split(r"[-–—/|:]", stripped) if part.strip()]
     if not parts:
         parts = [screen_name.strip() or "screen"]
@@ -277,14 +277,14 @@ def suggest_route_path(screen_name: str, page_name: str, role: ScreenRole) -> st
     return "/" + "/".join(segments)
 
 
-def _load_tree(design: Path, tree_rel: str) -> dict[str, Any] | None:
+def load_tree(design: Path, tree_rel: str) -> dict[str, Any] | None:
     path = design / tree_rel
     if not path.is_file():
         return None
     return orjson.loads(path.read_bytes())
 
 
-def _discover_tree_files(trees_dir: Path) -> dict[str, str]:
+def discover_tree_files(trees_dir: Path) -> dict[str, str]:
     discovered: dict[str, str] = {}
     if not trees_dir.is_dir():
         return discovered
@@ -295,7 +295,7 @@ def _discover_tree_files(trees_dir: Path) -> dict[str, str]:
     return discovered
 
 
-def _llm_guide() -> str:
+def llm_guide() -> str:
     return "\n".join(
         [
             "# Using this extraction to build HTML",
@@ -348,7 +348,7 @@ def _llm_guide() -> str:
     )
 
 
-def _build_components_index(design: Path) -> dict[str, Any] | None:
+def build_components_index(design: Path) -> dict[str, Any] | None:
     sets_path = design / "component-sets.json"
     if not sets_path.is_file():
         return None
@@ -387,7 +387,7 @@ def build_ui_flow(out: Path) -> dict[str, Any]:
 
     screens: list[dict[str, Any]] = orjson.loads(screens_path.read_bytes())
     trees_dir = design / "trees"
-    discovered_trees = _discover_tree_files(trees_dir)
+    discovered_trees = discover_tree_files(trees_dir)
 
     if (trees_dir / "index.json").is_file():
         index_data = orjson.loads((trees_dir / "index.json").read_bytes())
@@ -435,7 +435,7 @@ def build_ui_flow(out: Path) -> dict[str, Any]:
 
         if tree_rel:
             flow_screen["tree"] = tree_rel
-            tree = _load_tree(design, tree_rel)
+            tree = load_tree(design, tree_rel)
             if tree:
                 screens_with_trees += 1
                 scan = scan_tree(tree)
@@ -478,9 +478,9 @@ def build_ui_flow(out: Path) -> dict[str, Any]:
         },
     )
     write_json(screens_path, screens)
-    write_text(design / "LLM.md", _llm_guide())
+    write_text(design / "LLM.md", llm_guide())
 
-    components_index = _build_components_index(design)
+    components_index = build_components_index(design)
     if components_index is not None:
         write_json(design / "components" / "index.json", components_index)
 

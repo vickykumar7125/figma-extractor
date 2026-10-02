@@ -39,12 +39,12 @@ def decode_binary_schema(data: bytes | ByteBuffer) -> Schema:
     definition_count = bb.read_var_uint()
     definitions: list[Definition] = []
 
-    for _ in range(definition_count):
+    for definition_index in range(definition_count):
         definition_name = bb.read_string()
         kind = KINDS[bb.read_byte()]
         field_count = bb.read_var_uint()
         fields: list[Field] = []
-        for _ in range(field_count):
+        for field_index in range(field_count):
             field_name = bb.read_string()
             type_code = bb.read_var_int()
             is_array = bool(bb.read_byte() & 1)

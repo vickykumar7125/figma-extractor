@@ -1,0 +1,2 @@
+-r ../llm.txt
+langchain-google-genai>=4.4,<5

@@ -28,3 +28,10 @@ from figma_extractor.api import extract, info
 
 __version__ = "2.1.0"
 __all__ = ["extract", "info", "__version__"]
+
+
+def annotate(*args, **kwargs):
+    """Run optional LLM annotation. Import is deferred so extract stays provider-free."""
+    from figma_extractor.llm.annotate import annotate as run_annotate
+
+    return run_annotate(*args, **kwargs)

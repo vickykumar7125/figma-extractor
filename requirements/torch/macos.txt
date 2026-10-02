@@ -1,0 +1,9 @@
+# macOS only, including Apple Silicon MPS in the default wheel.
+# Verified 2026-10-02 on PyPI: torch 2.14.1 and torchvision 0.29.1
+# publish macosx_14_0_arm64 wheels. There is no CUDA index for macOS.
+# Do not use this file on Linux or Windows: the PyPI torch build there is not
+# the CPU-only or CUDA 13.2 profile. MPS is selected at runtime by
+# figma-extractor devices, not by a CUDA wheel.
+# https://pytorch.org/get-started/locally/
+torch==2.14.1
+torchvision==0.29.1

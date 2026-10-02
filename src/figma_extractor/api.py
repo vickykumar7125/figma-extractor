@@ -58,24 +58,24 @@ from figma_extractor.remote import (
 )
 
 
-def _remove_path(target: Path) -> None:
+def remove_path(target: Path) -> None:
     if target.is_dir():
         shutil.rmtree(target)
     elif target.is_file() or target.is_symlink():
         target.unlink()
 
 
-def _clean_output(output_path: Path) -> None:
+def clean_output(output_path: Path) -> None:
     """Wipe previous deliverables and intermediates so each run is a fresh rebuild."""
     for name in (*DELIVERABLE_DIRS, *INTERMEDIATE_DIRS, *LEGACY_DIRS):
-        _remove_path(output_path / name)
+        remove_path(output_path / name)
     for name in DELIVERABLE_FILES:
-        _remove_path(output_path / name)
+        remove_path(output_path / name)
 
 
-def _clean_intermediates(output_path: Path) -> None:
+def clean_intermediates(output_path: Path) -> None:
     for name in INTERMEDIATE_DIRS:
-        _remove_path(output_path / name)
+        remove_path(output_path / name)
 
 
 def extract(
@@ -111,12 +111,12 @@ def extract(
     output_path = Path(output).expanduser().resolve()
     output_path.mkdir(parents=True, exist_ok=True)
     if clean:
-        _clean_output(output_path)
+        clean_output(output_path)
 
     if file is not None:
-        source_kind, source_value, decode_summary = _extract_local(file, output_path)
+        source_kind, source_value, decode_summary = extract_local(file, output_path)
     else:
-        source_kind, source_value, decode_summary = _extract_remote(
+        source_kind, source_value, decode_summary = extract_remote(
             remote or "",
             output_path,
             api_key,
@@ -129,7 +129,7 @@ def extract(
     flow = build_ui_flow(output_path)
 
     if not keep_intermediates:
-        _clean_intermediates(output_path)
+        clean_intermediates(output_path)
 
     return {
         "source": {"type": source_kind, "value": source_value},
@@ -157,16 +157,16 @@ def info(directory: str | Path | None = None) -> dict[str, Any]:
     plus a compact ``summary`` block.
     """
     root = resolve_output_dir(directory)
-    pages = _load_json(root / "pages.json", [])
-    screens = _load_json(root / "screens.json", [])
-    components = _load_json(root / "components.json", [])
-    component_sets = _load_json(root / "component-sets.json", [])
-    text = _load_json(root / "text-content.json", {})
-    variables = _load_json(root / "tokens" / "variables.json", {})
-    typography = _load_json(root / "tokens" / "typography.json", {})
-    effects = _load_json(root / "tokens" / "effects.json", [])
-    assets = _load_json(root / "assets" / "manifest.json", [])
-    ui_flow = _load_json(root / "ui-flow.json", {})
+    pages = load_json(root / "pages.json", [])
+    screens = load_json(root / "screens.json", [])
+    components = load_json(root / "components.json", [])
+    component_sets = load_json(root / "component-sets.json", [])
+    text = load_json(root / "text-content.json", {})
+    variables = load_json(root / "tokens" / "variables.json", {})
+    typography = load_json(root / "tokens" / "typography.json", {})
+    effects = load_json(root / "tokens" / "effects.json", [])
+    assets = load_json(root / "assets" / "manifest.json", [])
+    ui_flow = load_json(root / "ui-flow.json", {})
     trees_with = sum(1 for screen in screens if screen.get("tree"))
 
     return {
@@ -217,7 +217,7 @@ def resolve_output_dir(directory: str | Path | None = None) -> Path:
 resolve_design_dir = resolve_output_dir
 
 
-def _extract_local(file: str | Path, output_path: Path) -> tuple[str, str, dict[str, Any]]:
+def extract_local(file: str | Path, output_path: Path) -> tuple[str, str, dict[str, Any]]:
     source = Path(file).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Fig file not found: {source}")
@@ -226,7 +226,7 @@ def _extract_local(file: str | Path, output_path: Path) -> tuple[str, str, dict[
     return "local", str(source), summary
 
 
-def _extract_remote(
+def extract_remote(
     remote: str,
     output_path: Path,
     api_key: str | None,
@@ -253,7 +253,7 @@ def _extract_remote(
     )
 
 
-def _load_json(path: Path, default: Any) -> Any:
+def load_json(path: Path, default: Any) -> Any:
     if not path.is_file():
         return default
     return orjson.loads(path.read_bytes())

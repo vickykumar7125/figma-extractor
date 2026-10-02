@@ -23,7 +23,7 @@ from figma_extractor.util import (
 console = Console(stderr=True)
 
 
-def _paint_to_css(paint: dict[str, Any] | None) -> str | None:
+def paint_to_css(paint: dict[str, Any] | None) -> str | None:
     if not paint or paint.get("visible") is False:
         return None
     ptype = paint.get("type")
@@ -45,7 +45,7 @@ def _paint_to_css(paint: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _line_height_css(lh: dict[str, Any] | None) -> Any:
+def line_height_css(lh: dict[str, Any] | None) -> Any:
     if not lh:
         return None
     units = lh.get("units")
@@ -59,7 +59,7 @@ def _line_height_css(lh: dict[str, Any] | None) -> Any:
     return None
 
 
-def _letter_spacing_css(ls: dict[str, Any] | None) -> str:
+def letter_spacing_css(ls: dict[str, Any] | None) -> str:
     if not ls or not ls.get("value"):
         return "0"
     if ls.get("units") == "PIXELS":
@@ -68,7 +68,7 @@ def _letter_spacing_css(ls: dict[str, Any] | None) -> str:
     return f"{round_num(float(ls['value']) / 100.0, 4)}em"
 
 
-def _effect_to_css(effect: dict[str, Any]) -> Any:
+def effect_to_css(effect: dict[str, Any]) -> Any:
     if effect.get("visible") is False:
         return None
     offset = effect.get("offset") or {}
@@ -89,7 +89,7 @@ def _effect_to_css(effect: dict[str, Any]) -> Any:
     return None
 
 
-def _resolve_variable_value(
+def resolve_variable_value(
     variable: dict[str, Any],
     mode_id: str | None,
     by_id: dict[str, dict[str, Any]],
@@ -116,12 +116,12 @@ def _resolve_variable_value(
         if target:
             return {
                 "alias": target.get("name"),
-                "value": _resolve_variable_value(target, mode_id, by_id, depth + 1),
+                "value": resolve_variable_value(target, mode_id, by_id, depth + 1),
             }
     return None
 
 
-def _named_style(node: dict[str, Any]) -> dict[str, Any]:
+def named_style(node: dict[str, Any]) -> dict[str, Any]:
     """
     Return ``node`` with a guaranteed string ``name``.
 
@@ -134,7 +134,7 @@ def _named_style(node: dict[str, Any]) -> dict[str, Any]:
     return {**node, "name": ""}
 
 
-def _style_group(name: str) -> str:
+def style_group(name: str) -> str:
     """Group a slash-delimited style name (``Brand/Primary/500`` → ``Brand``)."""
     return (name.split("/", 1)[0].strip() or "Default") if "/" in name else "Default"
 
@@ -156,11 +156,11 @@ def build_tokens(out: Path) -> dict[str, Any]:
             continue
         style_type = node.get("styleType")
         if style_type == "FILL":
-            fill_styles.append(_named_style(node))
+            fill_styles.append(named_style(node))
         elif style_type == "TEXT":
-            text_styles.append(_named_style(node))
+            text_styles.append(named_style(node))
         elif style_type == "EFFECT":
-            effect_styles.append(_named_style(node))
+            effect_styles.append(named_style(node))
         if node.get("type") == "VARIABLE":
             variables.append(node)
         elif node.get("type") == "VARIABLE_SET":
@@ -175,7 +175,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             for p in (style.get("fillPaints") or [])
             if p.get("visible") is not False
         ]
-        css_paints = [c for c in (_paint_to_css(p) for p in paints) if c]
+        css_paints = [c for c in (paint_to_css(p) for p in paints) if c]
         if not css_paints:
             continue
         name = style["name"]
@@ -189,7 +189,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             entry["layers"] = css_paints
         if paints and paints[0].get("type") != "SOLID":
             entry["paintType"] = paints[0].get("type")
-        color_groups[_style_group(name)].append(entry)
+        color_groups[style_group(name)].append(entry)
         color_flat[name] = entry["value"]
 
     # --- variables ---
@@ -212,7 +212,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
         modes: dict[str, Any] = {}
         mode_list = (vset or {}).get("modes") or [{"id": None, "name": "default"}]
         for mode in mode_list:
-            resolved = _resolve_variable_value(variable, mode.get("id"), by_id)
+            resolved = resolve_variable_value(variable, mode.get("id"), by_id)
             if isinstance(resolved, dict) and "alias" in resolved:
                 modes[mode["name"]] = resolved.get("value")
                 modes[f"{mode['name']}__aliasOf"] = resolved.get("alias")
@@ -250,8 +250,8 @@ def build_tokens(out: Path) -> dict[str, Any]:
             "fontWeight": font_weight,
             "fontStyle": "italic" if meta.get("fontStyle") == "ITALIC" else "normal",
             "fontSize": round_num(style["fontSize"]) if style.get("fontSize") is not None else None,
-            "lineHeight": _line_height_css(style.get("lineHeight")),
-            "letterSpacing": _letter_spacing_css(style.get("letterSpacing")),
+            "lineHeight": line_height_css(style.get("lineHeight")),
+            "letterSpacing": letter_spacing_css(style.get("letterSpacing")),
         }
         if style.get("textCase"):
             entry["textCase"] = style["textCase"]
@@ -259,14 +259,14 @@ def build_tokens(out: Path) -> dict[str, Any]:
             entry["textDecoration"] = style["textDecoration"]
         if style.get("paragraphSpacing"):
             entry["paragraphSpacing"] = round_num(style["paragraphSpacing"])
-        typography[_style_group(name)].append(entry)
+        typography[style_group(name)].append(entry)
         if entry["fontFamily"] and entry["fontWeight"]:
             fonts[entry["fontFamily"]].add(int(entry["fontWeight"]))
 
     # --- effects ---
     effects_out = []
     for style in effect_styles:
-        parts = [_effect_to_css(e) for e in (style.get("effects") or [])]
+        parts = [effect_to_css(e) for e in (style.get("effects") or [])]
         parts = [p for p in parts if p]
         shadows = [p for p in parts if isinstance(p, str)]
         filters = [p for p in parts if isinstance(p, dict)]
@@ -292,7 +292,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
             entry["filters"] = filters
         effects_out.append(entry)
 
-    css, conflicts = _build_css(color_groups, variables_payload, typography, effects_out)
+    css, conflicts = build_css(color_groups, variables_payload, typography, effects_out)
 
     tokens_dir = design_dir(out) / "tokens"
     write_json(tokens_dir / "color-styles.json", dict(color_groups))
@@ -328,7 +328,7 @@ def build_tokens(out: Path) -> dict[str, Any]:
     return summary
 
 
-def _build_css(
+def build_css(
     color_groups: dict[str, list[dict[str, Any]]],
     variables: dict[str, Any],
     typography: dict[str, list[dict[str, Any]]],

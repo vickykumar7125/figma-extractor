@@ -31,13 +31,14 @@ app = typer.Typer(
     epilog=(
         "Examples:\n"
         "  figma-extractor extract --file design.fig --output ./out\n"
-        "  figma-extractor info --dir ./out"
+        "  figma-extractor info --dir ./out\n"
+        "  figma-extractor annotate --dir ./out --llm-disabled"
     ),
 )
 console = Console(stderr=True)
 
 
-def _show_version(value: bool) -> None:
+def show_version(value: bool) -> None:
     if value:
         console.print(f"figma-extractor {__version__}")
         raise typer.Exit()
@@ -49,7 +50,7 @@ def main(
         False,
         "--version",
         "-V",
-        callback=_show_version,
+        callback=show_version,
         is_eager=True,
         help="Show version and exit.",
     ),
@@ -146,6 +147,65 @@ def info_cmd(
     for key, value in details["summary"].items():
         table.add_row(key, f"{value:,}")
     console.print(table)
+
+
+@app.command("annotate")
+def annotate_cmd(
+    directory: Path = typer.Option(Path("."), "--dir", "-d", help="Extract directory."),
+    llm: Optional[bool] = typer.Option(
+        None,
+        "--llm/--llm-disabled",
+        help="Enable or skip the model. When omitted, LLM_ENABLED is used (default false).",
+    ),
+    provider: Optional[str] = typer.Option(None, "--llm-provider", help="Provider id."),
+    model: Optional[str] = typer.Option(None, "--llm-model", help="Model id for the provider."),
+    temperature: Optional[float] = typer.Option(None, "--llm-temperature"),
+    config_path: Optional[Path] = typer.Option(None, "--llm-config", help="JSON config file."),
+    tasks: Optional[list[str]] = typer.Option(
+        None,
+        "--llm-task",
+        help="Repeat to enable a task. Ignored when LLM mode is off.",
+    ),
+) -> None:
+    """Write llm-annotations.json. Defaults to deterministic mode, with no model call."""
+    from figma_extractor.llm.annotate import annotate
+    from figma_extractor.llm.config import LlmConfig
+    from figma_extractor.llm.errors import LlmError
+
+    task_map = None
+    if tasks:
+        task_map = {name: True for name in tasks}
+    overrides: dict[str, object] = {}
+    if llm is not None:
+        overrides["enabled"] = llm
+    if provider is not None:
+        overrides["provider"] = provider
+    if model is not None:
+        overrides["model"] = model
+    if temperature is not None:
+        overrides["temperature"] = temperature
+    if task_map is not None:
+        overrides["tasks"] = task_map
+    try:
+        config = LlmConfig.load(path=config_path, overrides=overrides)
+        result = annotate(directory, config)
+    except (LlmError, FileNotFoundError, OSError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from None
+    mode = "enabled" if result["llmEnabled"] else "disabled"
+    console.print(
+        f"[green]Annotations[/] {mode} · {len(result['screens'])} screens → "
+        f"{directory / 'llm-annotations.json'}"
+    )
+
+
+@app.command("devices")
+def devices_cmd() -> None:
+    """Show the PyTorch device, if a hardware profile is installed."""
+    from figma_extractor.llm.device import detect_device
+
+    status = detect_device()
+    console.print(status.summary())
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from figma_extractor.util import gid, iter_ndjson, unique_slug, write_json
 console = Console(stderr=True)
 
 
-def _detect(buf: bytes) -> tuple[str, str]:
+def detect(buf: bytes) -> tuple[str, str]:
     if len(buf) >= 8 and buf[:8] == b"\x89PNG\r\n\x1a\n":
         return "png", "image/png"
     if len(buf) >= 3 and buf[0] == 0xFF and buf[1] == 0xD8 and buf[2] == 0xFF:
@@ -38,7 +38,7 @@ def _detect(buf: bytes) -> tuple[str, str]:
     return "bin", "application/octet-stream"
 
 
-def _dimensions(path: Path, ext: str) -> dict[str, int] | None:
+def dimensions(path: Path, ext: str) -> dict[str, int] | None:
     if ext not in ("png", "jpg", "jpeg", "webp", "gif"):
         return None
     try:
@@ -49,7 +49,7 @@ def _dimensions(path: Path, ext: str) -> dict[str, int] | None:
         return None
 
 
-def _collect_image_refs(nodes_file: Path) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
+def collect_image_refs(nodes_file: Path) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
     """Return (usage_by_hash, hash → preferred dataBlob index)."""
     usage: dict[str, list[dict[str, Any]]] = defaultdict(list)
     hash_to_blob: dict[str, int] = {}
@@ -89,7 +89,7 @@ def _collect_image_refs(nodes_file: Path) -> tuple[dict[str, list[dict[str, Any]
     return usage, hash_to_blob
 
 
-def _materialize_from_blobs(
+def materialize_from_blobs(
     out: Path,
     hash_to_blob: dict[str, int],
     destination: Path,
@@ -128,7 +128,7 @@ def build_images(out: Path) -> dict[str, Any]:
         nodes_path(out),
         "Decoded nodes not found. Run figma-extractor extract first.",
     )
-    usage, hash_to_blob = _collect_image_refs(nodes_file)
+    usage, hash_to_blob = collect_image_refs(nodes_file)
 
     images_src = source_dir(out) / "images"
     if not images_src.is_dir():
@@ -138,7 +138,7 @@ def build_images(out: Path) -> dict[str, Any]:
     existing = {p.name for p in images_src.iterdir() if p.is_file() and not p.name.startswith(".")}
     missing = {h: i for h, i in hash_to_blob.items() if h not in existing}
     if missing:
-        n = _materialize_from_blobs(out, missing, images_src)
+        n = materialize_from_blobs(out, missing, images_src)
         if n:
             console.print(f"[cyan]Images[/] materialized {n} from blobs → {images_src}")
 
@@ -152,13 +152,13 @@ def build_images(out: Path) -> dict[str, Any]:
 
     for src in files:
         buf = src.read_bytes()
-        ext, mime = _detect(buf)
+        ext, mime = detect(buf)
         # Truncated hashes are only for readability, so de-duplicate the stem:
         # two distinct refs can share their first 12 characters.
         out_name = f"{unique_slug(src.name[:12], used_names)}.{ext}"
         dest = out_images / out_name
         dest.write_bytes(buf)
-        dims = _dimensions(dest, ext)
+        dims = dimensions(dest, ext)
         users = usage.get(src.name, [])
         by_ext[ext] += 1
         entry: dict[str, Any] = {

@@ -16,17 +16,17 @@ from rich.console import Console
 
 console = Console(stderr=True)
 
-_FIG_KIWI_MAGIC = b"fig-kiwi"
+FIG_KIWI_MAGIC = b"fig-kiwi"
 
 
-def _is_zip(path: Path) -> bool:
+def is_zip(path: Path) -> bool:
     with path.open("rb") as handle:
         return handle.read(4) == b"PK\x03\x04"
 
 
-def _is_fig_kiwi(path: Path) -> bool:
+def is_fig_kiwi(path: Path) -> bool:
     with path.open("rb") as handle:
-        return handle.read(len(_FIG_KIWI_MAGIC)) == _FIG_KIWI_MAGIC
+        return handle.read(len(FIG_KIWI_MAGIC)) == FIG_KIWI_MAGIC
 
 
 def unzip_fig(fig_path: Path, dest: Path) -> Path:
@@ -44,7 +44,7 @@ def unzip_fig(fig_path: Path, dest: Path) -> Path:
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    if _is_zip(fig_path):
+    if is_zip(fig_path):
         with zipfile.ZipFile(fig_path) as archive:
             dest_resolved = dest.resolve()
             for member in archive.infolist():
@@ -58,14 +58,14 @@ def unzip_fig(fig_path: Path, dest: Path) -> Path:
                 f"{fig_path.name} is not a Figma design archive (missing canvas.fig)"
             )
         images = dest / "images"
-        image_count = sum(1 for _ in images.iterdir()) if images.is_dir() else 0
+        image_count = sum(1 for image_path in images.iterdir()) if images.is_dir() else 0
         console.print(
             f"[green]Unzipped[/] {fig_path.name} → {dest} "
             f"(canvas.fig, meta.json, {image_count} images)"
         )
         return dest
 
-    if _is_fig_kiwi(fig_path):
+    if is_fig_kiwi(fig_path):
         # Bare kiwi document — no embedded image folder in the wrapper.
         shutil.copy2(fig_path, dest / "canvas.fig")
         (dest / "meta.json").write_text(

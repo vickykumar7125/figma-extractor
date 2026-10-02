@@ -28,8 +28,8 @@ from figma_extractor.util import ascii_name, first_solid_fill, slug, unique_slug
 
 console = Console(stderr=True)
 
-_FRAME_TYPES = {"FRAME", "INSTANCE", "SYMBOL", "COMPONENT", "SECTION"}
-_GENERIC_NAMES = {
+FRAME_TYPES = {"FRAME", "INSTANCE", "SYMBOL", "COMPONENT", "SECTION"}
+GENERIC_NAMES = {
     "item",
     "frame",
     "group",
@@ -48,8 +48,8 @@ _GENERIC_NAMES = {
     "rectangle",
     "vector",
 }
-_GENERIC_RE = re.compile(r"^(frame|group|rectangle|vector|ellipse)\s*\d*$", re.I)
-_SECTION_NAMES = {
+GENERIC_RE = re.compile(r"^(frame|group|rectangle|vector|ellipse)\s*\d*$", re.I)
+SECTION_NAMES = {
     "header",
     "footer",
     "fotter",
@@ -113,22 +113,22 @@ _SECTION_NAMES = {
     "map",
     "form",
 }
-_MIN_UI_W = 280.0
-_MIN_UI_H = 400.0
-_MAX_DEPTH = 3
+MIN_UI_W = 280.0
+MIN_UI_H = 400.0
+MAX_DEPTH = 3
 
 
-def _meaningful_name(name: str | None) -> bool:
+def meaningful_name(name: str | None) -> bool:
     text = (name or "").strip()
     if not text:
         return False
     lowered = text.lower()
-    if lowered in _GENERIC_NAMES:
+    if lowered in GENERIC_NAMES:
         return False
-    return _GENERIC_RE.match(text) is None
+    return GENERIC_RE.match(text) is None
 
 
-def _title_from_tree(node: dict[str, Any]) -> str | None:
+def title_from_tree(node: dict[str, Any]) -> str | None:
     """Pull a label from a short header strip (Metronic board pattern)."""
     for child in node.get("children") or []:
         text = (child.get("text") or {}).get("content")
@@ -143,41 +143,41 @@ def _title_from_tree(node: dict[str, Any]) -> str | None:
     return None
 
 
-def _child_label(node: dict[str, Any], index: int) -> str:
+def child_label(node: dict[str, Any], index: int) -> str:
     name = str(node.get("name") or "").strip()
-    if _meaningful_name(name):
+    if meaningful_name(name):
         return name
-    titled = _title_from_tree(node)
+    titled = title_from_tree(node)
     if titled:
         return titled
     return f"screen-{index + 1}"
 
 
-def _ui_children(tree: dict[str, Any]) -> list[dict[str, Any]]:
+def ui_children(tree: dict[str, Any]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for child in tree.get("children") or []:
-        if child.get("type") not in _FRAME_TYPES:
+        if child.get("type") not in FRAME_TYPES:
             continue
         width = float(child.get("w") or 0)
         height = float(child.get("h") or 0)
-        if width >= _MIN_UI_W and height >= _MIN_UI_H:
+        if width >= MIN_UI_W and height >= MIN_UI_H:
             result.append(child)
     return result
 
 
-def _is_section_name(name: str | None) -> bool:
+def is_section_name(name: str | None) -> bool:
     text = re.sub(r"[\W_]+", " ", (name or "").strip().lower()).strip()
     if not text:
         return False
-    if text in _SECTION_NAMES:
+    if text in SECTION_NAMES:
         return True
     # "01 Home" / "Home Section" style landing blocks still count as sections
     # when the meaningful token is a known section word.
     tokens = [token for token in text.split() if token and not token.isdigit()]
-    return bool(tokens) and all(token in _SECTION_NAMES for token in tokens)
+    return bool(tokens) and all(token in SECTION_NAMES for token in tokens)
 
 
-def _height_cv(heights: list[float]) -> float:
+def height_cv(heights: list[float]) -> float:
     if not heights:
         return 0.0
     mean = sum(heights) / len(heights)
@@ -187,7 +187,7 @@ def _height_cv(heights: list[float]) -> float:
     return (var**0.5) / mean
 
 
-def _looks_like_landing_sections(parent: dict[str, Any], kids: list[dict[str, Any]]) -> bool:
+def looks_like_landing_sections(parent: dict[str, Any], kids: list[dict[str, Any]]) -> bool:
     """
     True when children are stacked page sections (Header/Hero/Footer), not peer UIs.
 
@@ -205,7 +205,7 @@ def _looks_like_landing_sections(parent: dict[str, Any], kids: list[dict[str, An
     # Skip this on mega artboards (Modernize Applications is ~12k wide) where
     # peer screens may also be named Blog/Contact/etc.
     if parent_w < 2800:
-        sectionish = sum(1 for child in kids if _is_section_name(str(child.get("name") or "")))
+        sectionish = sum(1 for child in kids if is_section_name(str(child.get("name") or "")))
         if sectionish >= max(2, int(len(kids) * 0.5)):
             return True
 
@@ -220,7 +220,7 @@ def _looks_like_landing_sections(parent: dict[str, Any], kids: list[dict[str, An
         return False
 
     sectionish_stacked = sum(
-        1 for child in stacked if _is_section_name(str(child.get("name") or ""))
+        1 for child in stacked if is_section_name(str(child.get("name") or ""))
     )
     if sectionish_stacked >= max(2, int(len(stacked) * 0.5)):
         return True
@@ -230,7 +230,7 @@ def _looks_like_landing_sections(parent: dict[str, Any], kids: list[dict[str, An
     # Contiguous sections usually cover most of the parent height.
     if parent_h > 0 and total_h >= parent_h * 0.7:
         # Peer UI boards also sum high — require heterogeneous heights.
-        if _height_cv(heights) >= 0.28:
+        if height_cv(heights) >= 0.28:
             return True
     # Wide + very tall with a few full-bleed chrome sections.
     if parent_w >= 1280 and parent_h >= 3000 and len(stacked) <= 8 and sectionish_stacked >= 1:
@@ -238,7 +238,7 @@ def _looks_like_landing_sections(parent: dict[str, Any], kids: list[dict[str, An
     return False
 
 
-def _is_grid_of_peers(parent: dict[str, Any], candidates: list[dict[str, Any]]) -> bool:
+def is_grid_of_peers(parent: dict[str, Any], candidates: list[dict[str, Any]]) -> bool:
     """True when peer UIs sit in multiple columns (wide artboard, ~one row tall)."""
     if len(candidates) < 2:
         return False
@@ -256,7 +256,7 @@ def _is_grid_of_peers(parent: dict[str, Any], candidates: list[dict[str, Any]]) 
     return parent_w >= median_w * 1.6
 
 
-def _split_targets(tree: dict[str, Any]) -> list[dict[str, Any]]:
+def split_targets(tree: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Return child trees that should become their own screens.
 
@@ -264,14 +264,14 @@ def _split_targets(tree: dict[str, Any]) -> list[dict[str, Any]]:
     Falls back to similarly sized full-width peers so light/dark ``item`` stacks
     still split. Never splits stacked landing-page sections into fake screens.
     """
-    kids = _ui_children(tree)
+    kids = ui_children(tree)
     if len(kids) < 2:
         return []
 
-    if _looks_like_landing_sections(tree, kids):
+    if looks_like_landing_sections(tree, kids):
         return []
 
-    named = [child for child in kids if _meaningful_name(str(child.get("name") or ""))]
+    named = [child for child in kids if meaningful_name(str(child.get("name") or ""))]
     candidates = named if len(named) >= 2 else []
 
     if not candidates:
@@ -283,7 +283,7 @@ def _split_targets(tree: dict[str, Any]) -> list[dict[str, Any]]:
             return []
         heights = sorted(float(child.get("h") or 0) for child in full)
         median = heights[len(heights) // 2]
-        if median < _MIN_UI_H:
+        if median < MIN_UI_H:
             return []
         peers = [
             child
@@ -303,31 +303,31 @@ def _split_targets(tree: dict[str, Any]) -> list[dict[str, Any]]:
     # Parent ~one page tall usually means layout regions — unless peers form a
     # multi-column grid (Modernize Applications-style artboards).
     if parent_h > 0 and median_h > 0 and parent_h < median_h * 1.55:
-        if not _is_grid_of_peers(tree, candidates):
+        if not is_grid_of_peers(tree, candidates):
             return []
 
-    if _looks_like_landing_sections(tree, candidates):
+    if looks_like_landing_sections(tree, candidates):
         return []
 
     # Prefer similarly sized peer pages (admin boards) over mixed sections.
     # Named peers may still vary in height (short auth + tall dashboard).
     heights = [float(child.get("h") or 0) for child in candidates]
-    cv = _height_cv(heights)
+    cv = height_cv(heights)
     if cv > 0.75:
         return []
     if cv > 0.55 and not all(
-        _meaningful_name(str(child.get("name") or "")) for child in candidates
+        meaningful_name(str(child.get("name") or "")) for child in candidates
     ):
         return []
 
     return candidates
 
 
-def _solid_fill(node: dict[str, Any]) -> str | None:
+def solid_fill(node: dict[str, Any]) -> str | None:
     return first_solid_fill(node.get("fills"))
 
 
-def _inherit_background(child: dict[str, Any], parent: dict[str, Any]) -> None:
+def inherit_background(child: dict[str, Any], parent: dict[str, Any]) -> None:
     """
     Carry the board's backdrop onto a split child.
 
@@ -336,12 +336,12 @@ def _inherit_background(child: dict[str, Any], parent: dict[str, Any]) -> None:
     """
     if parent.get("pageBackground") and not child.get("pageBackground"):
         child["pageBackground"] = parent["pageBackground"]
-    inherited = _solid_fill(parent) or parent.get("inheritedBackground")
-    if inherited and not _solid_fill(child):
+    inherited = solid_fill(parent) or parent.get("inheritedBackground")
+    if inherited and not solid_fill(child):
         child["inheritedBackground"] = inherited
 
 
-def _count_nodes(tree: dict[str, Any], *, cap: int | None = None) -> int:
+def count_nodes(tree: dict[str, Any], *, cap: int | None = None) -> int:
     total = 0
     stack = [tree]
     while stack:
@@ -353,17 +353,17 @@ def _count_nodes(tree: dict[str, Any], *, cap: int | None = None) -> int:
     return total
 
 
-def _expand_screen(
+def expand_screen(
     screen: dict[str, Any],
     tree: dict[str, Any],
     *,
     depth: int,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     """Recursively expand one board into leaf UI screens + their trees."""
-    if depth >= _MAX_DEPTH:
+    if depth >= MAX_DEPTH:
         return [(screen, tree)]
 
-    targets = _split_targets(tree)
+    targets = split_targets(tree)
     if not targets:
         return [(screen, tree)]
 
@@ -374,8 +374,8 @@ def _expand_screen(
 
     expanded: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for index, child_tree in enumerate(targets):
-        _inherit_background(child_tree, tree)
-        label = _child_label(child_tree, index)
+        inherit_background(child_tree, tree)
+        label = child_label(child_tree, index)
         child_screen = {
             "page": screen.get("page"),
             "pageId": screen.get("pageId"),
@@ -389,28 +389,28 @@ def _expand_screen(
             "boards": board_chain,
             "sourceBoard": screen.get("sourceBoard") or board_name,
         }
-        expanded.extend(_expand_screen(child_screen, child_tree, depth=depth + 1))
+        expanded.extend(expand_screen(child_screen, child_tree, depth=depth + 1))
     return expanded
 
 
-_CROP_MIN_W = 480.0
-_CROP_MAX_W = 1400.0
-_CROP_MIN_H = 180.0
-_CROP_MAX_H = 900.0
-_OVERLAY_NAME_RE = re.compile(
+CROP_MIN_W = 480.0
+CROP_MAX_W = 1400.0
+CROP_MIN_H = 180.0
+CROP_MAX_H = 900.0
+OVERLAY_NAME_RE = re.compile(
     r"(modal|dialog|drawer|popup|popover|overlay|dropdown|toast|alert|confirm)",
     re.I,
 )
 
 
-def _is_full_page(tree: dict[str, Any]) -> bool:
+def is_full_page(tree: dict[str, Any]) -> bool:
     """Desktop-width long pages should stay intact; crops are noise for them."""
     width = float(tree.get("w") or 0)
     height = float(tree.get("h") or 0)
     return width >= 1280 and height >= 2000
 
 
-def _is_crop_frame(node: dict[str, Any]) -> bool:
+def is_crop_frame(node: dict[str, Any]) -> bool:
     """
     Mid-size nested frames that often match standalone design exports.
 
@@ -418,29 +418,29 @@ def _is_crop_frame(node: dict[str, Any]) -> bool:
     be a full desktop page, richly named (or clearly an overlay), and dense
     enough to be worth its own tree.
     """
-    if node.get("type") not in _FRAME_TYPES:
+    if node.get("type") not in FRAME_TYPES:
         return False
     width = float(node.get("w") or 0)
     height = float(node.get("h") or 0)
-    if not (_CROP_MIN_W <= width <= _CROP_MAX_W and _CROP_MIN_H <= height <= _CROP_MAX_H):
+    if not (CROP_MIN_W <= width <= CROP_MAX_W and CROP_MIN_H <= height <= CROP_MAX_H):
         return False
     # Skip near-square icon sheets and full-bleed heroes that already split.
     if height > 0 and width / height > 4.5:
         return False
     name = str(node.get("name") or "").strip()
-    if not _meaningful_name(name):
+    if not meaningful_name(name):
         return False
     if re.match(r"^screen-\d+$", name, re.I):
         return False
     # Prefer explicitly named overlays; allow other meaningful mid-size frames
     # only when dense (cards / panels that match kit exports).
-    nodes = _count_nodes(node, cap=32)
-    if _OVERLAY_NAME_RE.search(name):
+    nodes = count_nodes(node, cap=32)
+    if OVERLAY_NAME_RE.search(name):
         return nodes >= 8
     return nodes >= 28
 
 
-def _promote_crops(
+def promote_crops(
     screen: dict[str, Any],
     tree: dict[str, Any],
     *,
@@ -457,7 +457,7 @@ def _promote_crops(
     Skip promotion on full marketing pages and on typical single-UI leaves —
     otherwise Metronic auth pages explode into thousands of card crops.
     """
-    if _is_full_page(tree):
+    if is_full_page(tree):
         return []
     parent_w = float(tree.get("w") or 0)
     parent_h = float(tree.get("h") or 0)
@@ -471,18 +471,18 @@ def _promote_crops(
         child = queue.popleft()
         queue.extend(child.get("children") or [])
         node_id = str(child.get("id") or "")
-        if not _is_crop_frame(child):
+        if not is_crop_frame(child):
             continue
         name = str(child.get("name") or "")
-        if single_ui and not _OVERLAY_NAME_RE.search(name):
+        if single_ui and not OVERLAY_NAME_RE.search(name):
             continue
         if node_id and node_id in seen_ids:
             continue
         if node_id:
             seen_ids.add(node_id)
-        label = _child_label(child, len(promoted))
+        label = child_label(child, len(promoted))
         crop_tree = dict(child)
-        _inherit_background(crop_tree, tree)
+        inherit_background(crop_tree, tree)
         crop_tree["x"] = 0
         crop_tree["y"] = 0
         crop_tree.pop("absolute", None)
@@ -544,7 +544,7 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
             expanded.append((screen, None))
             continue
         tree = orjson.loads(tree_path.read_bytes())
-        pieces = _expand_screen(screen, tree, depth=0)
+        pieces = expand_screen(screen, tree, depth=0)
         if len(pieces) > 1:
             boards_split += 1
         for piece_screen, piece_tree in pieces:
@@ -552,7 +552,7 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
             if node_id:
                 seen_ids.add(node_id)
             expanded.append((piece_screen, piece_tree))
-            crops = _promote_crops(piece_screen, piece_tree, seen_ids=seen_ids)
+            crops = promote_crops(piece_screen, piece_tree, seen_ids=seen_ids)
             crops_promoted += len(crops)
             expanded.extend(crops)
 
@@ -580,7 +580,7 @@ def split_screen_boards(out: Path) -> dict[str, Any]:
         write_json(trees_dir / f"{candidate}.json", tree)
         screen["tree"] = f"trees/{candidate}.json"
         screen["slug"] = candidate
-        screen["renderNodes"] = _count_nodes(tree)
+        screen["renderNodes"] = count_nodes(tree)
         final_screens.append(screen)
 
     summary = {

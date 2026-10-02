@@ -1,0 +1,12 @@
+-r openai.txt
+-r anthropic.txt
+-r google.txt
+-r vertex.txt
+-r ollama.txt
+-r huggingface.txt
+-r groq.txt
+-r xai.txt
+-r nvidia.txt
+-r cohere.txt
+-r together.txt
+-r deepseek.txt

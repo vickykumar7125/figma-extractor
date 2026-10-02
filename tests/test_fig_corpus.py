@@ -138,11 +138,11 @@ class Checks:
         return [c for c in self.items if not c["ok"] and c["level"] == "warning"]
 
 
-def _load_json(path: Path):
+def load_json(path: Path):
     return json.loads(path.read_bytes())
 
 
-def _tree_digest(path: Path) -> str:
+def tree_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
@@ -216,14 +216,14 @@ def validate_output(out: Path, source: SourceFacts) -> Checks:
     if missing:
         return checks
 
-    pages = _load_json(out / "pages.json")
-    screens = _load_json(out / "screens.json")
-    components = _load_json(out / "components.json")
-    comp_sets = _load_json(out / "component-sets.json")
-    text_content = _load_json(out / "text-content.json")
-    flow = _load_json(out / "ui-flow.json")
-    tree_index = _load_json(out / "trees" / "index.json")
-    manifest = _load_json(out / "assets" / "manifest.json")
+    pages = load_json(out / "pages.json")
+    screens = load_json(out / "screens.json")
+    components = load_json(out / "components.json")
+    comp_sets = load_json(out / "component-sets.json")
+    text_content = load_json(out / "text-content.json")
+    flow = load_json(out / "ui-flow.json")
+    tree_index = load_json(out / "trees" / "index.json")
+    manifest = load_json(out / "assets" / "manifest.json")
     tokens_css = (out / "tokens" / "tokens.css").read_text()
 
     # --- structure -------------------------------------------------------------
@@ -281,7 +281,7 @@ def validate_output(out: Path, source: SourceFacts) -> Checks:
             continue
         path = out / rel
         try:
-            tree = _load_json(path)
+            tree = load_json(path)
         except Exception as exc:  # noqa: BLE001
             broken.append(f"{rel}: {type(exc).__name__}")
             continue
@@ -327,7 +327,7 @@ def validate_output(out: Path, source: SourceFacts) -> Checks:
 
     # --- conditional token checks, driven by what the file declares -------------
     if source["styleFill"]:
-        groups = _load_json(out / "tokens" / "color-styles.json")
+        groups = load_json(out / "tokens" / "color-styles.json")
         checks.add(
             "FILL styles -> colour tokens",
             bool(groups),
@@ -342,7 +342,7 @@ def validate_output(out: Path, source: SourceFacts) -> Checks:
         )
 
     if source["styleText"]:
-        typo = _load_json(out / "tokens" / "typography.json")
+        typo = load_json(out / "tokens" / "typography.json")
         checks.add(
             "TEXT styles -> typography tokens",
             bool(typo),
@@ -357,7 +357,7 @@ def validate_output(out: Path, source: SourceFacts) -> Checks:
         )
 
     if source["styleEffect"]:
-        effects = _load_json(out / "tokens" / "effects.json")
+        effects = load_json(out / "tokens" / "effects.json")
         checks.add("EFFECT styles -> effects tokens", bool(effects), f"{len(effects)} styles")
     else:
         checks.add("EFFECT styles -> effects tokens", True, "skipped: file declares none")
@@ -503,7 +503,7 @@ def run_worker(fig: Path, out: Path, keep: bool, mem_bytes: int, determinism: bo
             b = sorted(p.name for p in (second / "trees").glob("*.json"))
             same_names = a == b
             same_body = same_names and all(
-                _tree_digest(out / "trees" / n) == _tree_digest(second / "trees" / n) for n in a
+                tree_digest(out / "trees" / n) == tree_digest(second / "trees" / n) for n in a
             )
             report["deterministic"] = bool(same_body)
             checks.add("extraction is deterministic", same_body, "tree set/content differs between runs")
@@ -574,17 +574,17 @@ def run_isolated(fig: Path, work: Path, keep: bool, timeout: int, mem_bytes: int
     return report
 
 
-def _cell(text: str, width: int) -> str:
+def cell(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 1] + "…"
 
 
-def _mapping(value: object) -> dict[str, Any]:
+def mapping(value: object) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
 
 
-def _count_text(value: object) -> str:
+def count_text(value: object) -> str:
     """Render a metric for the matrix. Missing or non-numeric values show a dash."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return "-"
@@ -604,12 +604,12 @@ def print_matrix(reports: list[Report]) -> None:
             outcome = "CRASH"
         elif outcome == "timeout":
             outcome = "TIMEOUT"
-        summary = _mapping(report.get("summary"))
-        structure = _mapping(summary.get("structure"))
-        tokens = _mapping(summary.get("tokens"))
-        images = _mapping(summary.get("images"))
-        trees = _mapping(summary.get("trees"))
-        split = _mapping(trees.get("split"))
+        summary = mapping(report.get("summary"))
+        structure = mapping(summary.get("structure"))
+        tokens = mapping(summary.get("tokens"))
+        images = mapping(summary.get("images"))
+        trees = mapping(summary.get("trees"))
+        split = mapping(trees.get("split"))
         tree_total = split.get("screensAfter", trees.get("trees"))
         if outcome in ("CRASH", "TIMEOUT"):
             detail = (report.get("error") or "")[:70]
@@ -618,11 +618,11 @@ def print_matrix(reports: list[Report]) -> None:
             warns = report.get("warnings") or []
             detail = "; ".join(problems) if problems else (f"{len(warns)} warn" if warns else "clean")
         print(
-            f"{_cell(report.get('file', ''), 40):<40}{_cell(outcome, 9):<9}"
-            f"{_count_text(structure.get('pages')):>6}{_count_text(structure.get('screens')):>8}"
-            f"{_count_text(tree_total):>7}"
-            f"{_count_text(tokens.get('colorStyles')):>8}{_count_text(structure.get('components')):>7}"
-            f"{_count_text(images.get('copied')):>7}{_count_text(report.get('elapsed')):>7}  {detail}"
+            f"{cell(report.get('file', ''), 40):<40}{cell(outcome, 9):<9}"
+            f"{count_text(structure.get('pages')):>6}{count_text(structure.get('screens')):>8}"
+            f"{count_text(tree_total):>7}"
+            f"{count_text(tokens.get('colorStyles')):>8}{count_text(structure.get('components')):>7}"
+            f"{count_text(images.get('copied')):>7}{count_text(report.get('elapsed')):>7}  {detail}"
         )
 
 
@@ -657,19 +657,19 @@ def print_detail(report: Report) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _pytest_corpus() -> Path:
+def pytest_corpus() -> Path:
     return Path(os.environ.get("FIGMA_CORPUS", DEFAULT_CORPUS))
 
 
-def _pytest_files():
-    corpus = _pytest_corpus()
+def pytest_files():
+    corpus = pytest_corpus()
     if not corpus.is_dir():
         return []
     return sorted(corpus.glob("*.fig"))
 
 
 def test_corpus_dir_exists():
-    corpus = _pytest_corpus()
+    corpus = pytest_corpus()
     assert corpus.is_dir(), (
         f"corpus dir not found: {corpus}\n"
         f"set FIGMA_CORPUS=/path/to/FigmaFiles or pass --corpus to the script"
@@ -678,7 +678,7 @@ def test_corpus_dir_exists():
 
 def pytest_generate_tests(metafunc):
     if "fig_file" in metafunc.fixturenames:
-        metafunc.parametrize("fig_file", _pytest_files(), ids=lambda p: p.name)
+        metafunc.parametrize("fig_file", pytest_files(), ids=lambda p: p.name)
 
 
 def test_extract_file(fig_file: Path, tmp_path: Path):

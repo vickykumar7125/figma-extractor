@@ -1,0 +1,2 @@
+-r ../llm.txt
+langchain-cohere>=0.6

@@ -8,10 +8,10 @@ from typing import Any, Iterator
 
 import orjson
 
-_SLUG_RE = re.compile(r"[^a-z0-9]+")
-_ASCII_RE = re.compile(r"[^\x20-\x7E]+")
+SLUG_RE = re.compile(r"[^a-z0-9]+")
+ASCII_RE = re.compile(r"[^\x20-\x7E]+")
 # Longest tokens first so "extralight" wins over "light", "semibold" over "bold".
-_WEIGHT_TOKENS: tuple[tuple[str, int], ...] = (
+WEIGHT_TOKENS: tuple[tuple[str, int], ...] = (
     ("extralight", 200),
     ("ultralight", 200),
     ("extrabold", 800),
@@ -27,11 +27,11 @@ _WEIGHT_TOKENS: tuple[tuple[str, int], ...] = (
     ("heavy", 900),
     ("bold", 700),
 )
-_WEIGHT_RE = re.compile(
-    r"(?<![a-z])(" + "|".join(re.escape(token) for token, _ in _WEIGHT_TOKENS) + r")(?![a-z])",
+WEIGHT_RE = re.compile(
+    r"(?<![a-z])(" + "|".join(re.escape(token) for token, weight in WEIGHT_TOKENS) + r")(?![a-z])",
     re.I,
 )
-_WEIGHT_LOOKUP = dict(_WEIGHT_TOKENS)
+WEIGHT_LOOKUP = dict(WEIGHT_TOKENS)
 
 
 def gid(guid: dict[str, Any] | None) -> str | None:
@@ -46,11 +46,11 @@ def gid(guid: dict[str, Any] | None) -> str | None:
 
 
 def slug(text: str) -> str:
-    return _SLUG_RE.sub("-", text.strip().lower()).strip("-") or "unnamed"
+    return SLUG_RE.sub("-", text.strip().lower()).strip("-") or "unnamed"
 
 
 def ascii_name(text: str) -> str:
-    return _ASCII_RE.sub("", text).strip() or text
+    return ASCII_RE.sub("", text).strip() or text
 
 
 def unique_slug(base: str, used: set[str]) -> str:
@@ -72,9 +72,9 @@ def font_weight_from_name(
     """Map a Figma font style / family token to a CSS weight."""
     for source in (style or "", family or ""):
         lowered = source.lower().replace(" ", "")
-        match = _WEIGHT_RE.search(lowered)
+        match = WEIGHT_RE.search(lowered)
         if match:
-            return _WEIGHT_LOOKUP[match.group(1).lower()]
+            return WEIGHT_LOOKUP[match.group(1).lower()]
     return int(fallback) if fallback else 400
 
 

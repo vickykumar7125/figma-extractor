@@ -1,6 +1,2 @@
-typer
-rich
-orjson
-zstandard
-Pillow
-httpx
+# Core runtime only. LLM providers and PyTorch are optional profiles.
+-r requirements/base.txt

@@ -1,0 +1,6 @@
+typer
+rich
+orjson
+zstandard
+Pillow
+httpx

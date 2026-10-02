@@ -15,7 +15,7 @@ class CompiledSchema:
         self.schema = schema
         self.definitions: dict[str, Definition] = {d.name: d for d in schema.definitions}
         self.enums: dict[str, dict[Any, Any]] = {}
-        self._decoders: dict[str, Callable[[ByteBuffer], Any]] = {}
+        self.decoders: dict[str, Callable[[ByteBuffer], Any]] = {}
 
         for definition in schema.definitions:
             if definition.kind == "ENUM":
@@ -28,16 +28,16 @@ class CompiledSchema:
         # Build decoders after enums exist so nested refs resolve.
         for definition in schema.definitions:
             if definition.kind in ("STRUCT", "MESSAGE"):
-                self._decoders[definition.name] = self._make_decoder(definition)
+                self.decoders[definition.name] = self.make_decoder(definition)
 
     def decode_message(self, data: bytes | ByteBuffer, type_name: str = "Message") -> Any:
         bb = data if isinstance(data, ByteBuffer) else ByteBuffer(data)
-        decoder = self._decoders.get(type_name)
+        decoder = self.decoders.get(type_name)
         if decoder is None:
             raise KeyError(f"No decoder for type {type_name!r}")
         return decoder(bb)
 
-    def _make_decoder(self, definition: Definition) -> Callable[[ByteBuffer], Any]:
+    def make_decoder(self, definition: Definition) -> Callable[[ByteBuffer], Any]:
         fields = definition.fields
         kind = definition.kind
         field_by_id = {f.value: f for f in fields} if kind == "MESSAGE" else None
@@ -66,14 +66,14 @@ class CompiledSchema:
             if nested.kind == "ENUM":
                 raw = bb.read_var_uint()
                 return self.enums[nested.name].get(raw, raw)
-            return self._decoders[nested.name](bb)
+            return self.decoders[nested.name](bb)
 
         def decode_field(bb: ByteBuffer, fld) -> Any:
             if fld.is_array:
                 if fld.type == "byte":
                     return bb.read_byte_array()
                 length = bb.read_var_uint()
-                return [decode_value(bb, fld.type) for _ in range(length)]
+                return [decode_value(bb, fld.type) for item_index in range(length)]
             return decode_value(bb, fld.type)
 
         if kind == "STRUCT":

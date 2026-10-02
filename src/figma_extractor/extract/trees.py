@@ -40,7 +40,7 @@ from figma_extractor.util import (
 
 console = Console(stderr=True)
 
-_JUSTIFY = {
+JUSTIFY = {
     "MIN": "flex-start",
     "CENTER": "center",
     "MAX": "flex-end",
@@ -48,16 +48,16 @@ _JUSTIFY = {
     "SPACE_EVENLY": "space-evenly",
     "SPACE_AROUND": "space-around",
 }
-_ALIGN = {
+ALIGN = {
     "MIN": "flex-start",
     "CENTER": "center",
     "MAX": "flex-end",
     "BASELINE": "baseline",
     "STRETCH": "stretch",
 }
-_TEXT_ALIGN = {"LEFT": "left", "CENTER": "center", "RIGHT": "right", "JUSTIFIED": "justify"}
-_VERTICAL_ALIGN = {"TOP": "flex-start", "CENTER": "center", "BOTTOM": "flex-end"}
-_GEOMETRY_TYPES = {
+TEXT_ALIGN = {"LEFT": "left", "CENTER": "center", "RIGHT": "right", "JUSTIFIED": "justify"}
+VERTICAL_ALIGN = {"TOP": "flex-start", "CENTER": "center", "BOTTOM": "flex-end"}
+GEOMETRY_TYPES = {
     "VECTOR",
     "ELLIPSE",
     "REGULAR_POLYGON",
@@ -67,9 +67,9 @@ _GEOMETRY_TYPES = {
     "ROUNDED_RECTANGLE",
     "RECTANGLE",
 }
-_SKIP_TYPES = {"DOCUMENT", "CANVAS", "SLICE"}
+SKIP_TYPES = {"DOCUMENT", "CANVAS", "SLICE"}
 # Bookkeeping fields on instance overrides that are not node properties.
-_OVERRIDE_META = {
+OVERRIDE_META = {
     "guidPath",
     "overrideLevel",
     "pluginData",
@@ -79,15 +79,15 @@ _OVERRIDE_META = {
     "textBidiVersion",
 }
 # Expanded instances can multiply node counts; keep one screen bounded.
-_NODE_BUDGET = 60_000
-_MAX_DEPTH = 60
+NODE_BUDGET = 60_000
+MAX_DEPTH = 60
 
 
-def _weight_from_style(style: str, fallback: int | None, family: str | None = None) -> int:
+def weight_from_style(style: str, fallback: int | None, family: str | None = None) -> int:
     return font_weight_from_name(style, fallback, family)
 
 
-def _paint(paint: dict[str, Any]) -> dict[str, Any] | None:
+def paint(paint: dict[str, Any]) -> dict[str, Any] | None:
     if paint.get("visible") is False:
         return None
     kind = paint.get("type")
@@ -114,10 +114,10 @@ def _paint(paint: dict[str, Any]) -> dict[str, Any] | None:
         if not stops:
             return None
         summary: dict[str, Any] = {"type": "gradient", "kind": kind, "stops": stops}
-        angle = _gradient_angle(paint.get("transform"))
+        angle = gradient_angle(paint.get("transform"))
         if angle is not None and kind == "GRADIENT_LINEAR":
             summary["angle"] = angle
-        center = _gradient_center(paint.get("transform"))
+        center = gradient_center(paint.get("transform"))
         if center is not None and kind in ("GRADIENT_RADIAL", "GRADIENT_DIAMOND"):
             summary["cx"] = center[0]
             summary["cy"] = center[1]
@@ -125,7 +125,7 @@ def _paint(paint: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _gradient_angle(transform: dict[str, Any] | None) -> float | None:
+def gradient_angle(transform: dict[str, Any] | None) -> float | None:
     """
     CSS angle for a Figma gradient transform.
 
@@ -142,7 +142,7 @@ def _gradient_angle(transform: dict[str, Any] | None) -> float | None:
     return round_num(angle % 360.0, 1)
 
 
-def _gradient_center(transform: dict[str, Any] | None) -> tuple[float, float] | None:
+def gradient_center(transform: dict[str, Any] | None) -> tuple[float, float] | None:
     """Normalized radial center (0–1) from the gradient transform translation."""
     if not transform:
         return None
@@ -151,16 +151,16 @@ def _gradient_center(transform: dict[str, Any] | None) -> tuple[float, float] | 
     return (round_num(cx, 3), round_num(cy, 3))
 
 
-def _paints(paints: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+def paints(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     result = []
-    for paint in paints or []:
-        summary = _paint(paint)
+    for item in items or []:
+        summary = paint(item)
         if summary:
             result.append(summary)
     return result
 
 
-def _shadows(effects: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+def shadows(effects: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for effect in effects or []:
         if effect.get("visible") is False:
@@ -206,7 +206,7 @@ def _shadows(effects: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     return result
 
 
-_BLEND = {
+BLEND = {
     "MULTIPLY": "multiply",
     "SCREEN": "screen",
     "OVERLAY": "overlay",
@@ -227,7 +227,7 @@ _BLEND = {
 }
 
 
-def _radius(raw: dict[str, Any]) -> Any:
+def radius(raw: dict[str, Any]) -> Any:
     corners = [
         raw.get("rectangleTopLeftCornerRadius"),
         raw.get("rectangleTopRightCornerRadius"),
@@ -243,7 +243,7 @@ def _radius(raw: dict[str, Any]) -> Any:
     return round_num(radius, 2) if radius else None
 
 
-def _layout(raw: dict[str, Any]) -> dict[str, Any] | None:
+def layout(raw: dict[str, Any]) -> dict[str, Any] | None:
     mode = raw.get("stackMode")
     if mode not in ("HORIZONTAL", "VERTICAL"):
         return None
@@ -258,10 +258,10 @@ def _layout(raw: dict[str, Any]) -> dict[str, Any] | None:
     ]
     if any(value is not None for value in padding):
         layout["pad"] = [round_num(value or 0, 2) for value in padding]
-    justify = _JUSTIFY.get(str(raw.get("stackPrimaryAlignItems") or ""))
+    justify = JUSTIFY.get(str(raw.get("stackPrimaryAlignItems") or ""))
     if justify:
         layout["justify"] = justify
-    align = _ALIGN.get(str(raw.get("stackCounterAlignItems") or ""))
+    align = ALIGN.get(str(raw.get("stackCounterAlignItems") or ""))
     if align:
         layout["align"] = align
     if raw.get("stackWrap") == "WRAP":
@@ -269,7 +269,7 @@ def _layout(raw: dict[str, Any]) -> dict[str, Any] | None:
     return layout
 
 
-def _text(raw: dict[str, Any]) -> dict[str, Any] | None:
+def text(raw: dict[str, Any]) -> dict[str, Any] | None:
     data = raw.get("textData") or {}
     characters = data.get("characters")
     if characters is None:
@@ -281,7 +281,7 @@ def _text(raw: dict[str, Any]) -> dict[str, Any] | None:
     family = font.get("family")
     text: dict[str, Any] = {
         "content": characters,
-        "weight": _weight_from_style(style, meta.get("fontWeight"), family if isinstance(family, str) else None),
+        "weight": weight_from_style(style, meta.get("fontWeight"), family if isinstance(family, str) else None),
     }
     if family:
         text["family"] = family
@@ -301,10 +301,10 @@ def _text(raw: dict[str, Any]) -> dict[str, Any] | None:
             "value": round_num(letter["value"], 3),
             "units": letter.get("units", "PIXELS"),
         }
-    align_h = _TEXT_ALIGN.get(str(raw.get("textAlignHorizontal") or ""))
+    align_h = TEXT_ALIGN.get(str(raw.get("textAlignHorizontal") or ""))
     if align_h:
         text["alignH"] = align_h
-    align_v = _VERTICAL_ALIGN.get(str(raw.get("textAlignVertical") or ""))
+    align_v = VERTICAL_ALIGN.get(str(raw.get("textAlignVertical") or ""))
     if align_v:
         text["alignV"] = align_v
     if raw.get("textDecoration") == "UNDERLINE":
@@ -320,7 +320,7 @@ def _text(raw: dict[str, Any]) -> dict[str, Any] | None:
     return text
 
 
-class _TreeBuilder:
+class TreeBuilder:
     """Turn the decoded node stream into renderable per-screen trees."""
 
     def __init__(self, nodes_file: Path, paths: PathStore | None) -> None:
@@ -329,7 +329,7 @@ class _TreeBuilder:
         self.children: dict[str, list[str]] = defaultdict(list)
         self.canvas_background: dict[str, str] = {}
         # Node budget is per-screen; reset by build() before each walk.
-        self._budget = _NODE_BUDGET
+        self.budget = NODE_BUDGET
 
         for raw in iter_ndjson(nodes_file):
             node_id = gid(raw.get("guid"))
@@ -341,7 +341,7 @@ class _TreeBuilder:
                 )
                 if background:
                     self.canvas_background[node_id] = background
-            if raw.get("type") in _SKIP_TYPES:
+            if raw.get("type") in SKIP_TYPES:
                 continue
             self.raw[node_id] = raw
             parent = raw.get("parentIndex") or {}
@@ -368,31 +368,31 @@ class _TreeBuilder:
         opacity = raw.get("opacity", 1)
         if opacity is not None and opacity != 1:
             node["opacity"] = round_num(opacity, 3)
-        blend = _BLEND.get(str(raw.get("blendMode") or ""))
+        blend = BLEND.get(str(raw.get("blendMode") or ""))
         if blend:
             node["blend"] = blend
 
-        fills = _paints(raw.get("fillPaints"))
+        fills = paints(raw.get("fillPaints"))
         if fills:
             node["fills"] = fills
-        strokes = _paints(raw.get("strokePaints"))
+        strokes = paints(raw.get("strokePaints"))
         if strokes:
             node["stroke"] = {
                 "paints": strokes,
                 "weight": round_num(raw.get("strokeWeight", 1), 2),
                 "align": raw.get("strokeAlign") or "INSIDE",
             }
-        shadows = _shadows(raw.get("effects"))
-        if shadows:
-            node["shadows"] = shadows
+        shadow_items = shadows(raw.get("effects"))
+        if shadow_items:
+            node["shadows"] = shadow_items
 
-        radius = _radius(raw)
-        if radius:
-            node["radius"] = radius
+        corner_radius = radius(raw)
+        if corner_radius:
+            node["radius"] = corner_radius
 
-        layout = _layout(raw)
-        if layout:
-            node["layout"] = layout
+        layout_box = layout(raw)
+        if layout_box:
+            node["layout"] = layout_box
         if raw.get("stackChildPrimaryGrow"):
             node["grow"] = round_num(raw["stackChildPrimaryGrow"], 2)
         if raw.get("stackPositioning") == "ABSOLUTE":
@@ -411,11 +411,11 @@ class _TreeBuilder:
         if node_type == "BOOLEAN_OPERATION" and raw.get("booleanOperation"):
             node["booleanOp"] = raw["booleanOperation"]
 
-        text = _text(raw)
-        if text:
-            node["text"] = text
+        text_style = text(raw)
+        if text_style:
+            node["text"] = text_style
 
-        if self.paths and node_type in _GEOMETRY_TYPES:
+        if self.paths and node_type in GEOMETRY_TYPES:
             outlines = self.paths.outlines(raw.get("fillGeometry"))
             if outlines:
                 node["paths"] = outlines
@@ -425,7 +425,7 @@ class _TreeBuilder:
         return node
 
     @staticmethod
-    def _override_map(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    def override_map(raw: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """
         Per-descendant overrides for one instance, keyed by target node id.
 
@@ -447,18 +447,18 @@ class _TreeBuilder:
                 fields = {
                     key: value
                     for key, value in entry.items()
-                    if key not in _OVERRIDE_META and value not in (None, [])
+                    if key not in OVERRIDE_META and value not in (None, [])
                 }
                 if fields:
                     overrides.setdefault(target, {}).update(fields)
         return overrides
 
     def build(self, root_id: str) -> tuple[dict[str, Any] | None, int]:
-        self._budget = _NODE_BUDGET
-        tree = self._walk(root_id, depth=0, overrides={}, symbol_stack=(), force_visible=True)
-        return tree, _NODE_BUDGET - self._budget
+        self.budget = NODE_BUDGET
+        tree = self.walk(root_id, depth=0, overrides={}, symbol_stack=(), force_visible=True)
+        return tree, NODE_BUDGET - self.budget
 
-    def _walk(
+    def walk(
         self,
         node_id: str,
         *,
@@ -468,17 +468,17 @@ class _TreeBuilder:
         force_visible: bool = False,
     ) -> dict[str, Any] | None:
         base = self.raw.get(node_id)
-        if base is None or self._budget <= 0:
+        if base is None or self.budget <= 0:
             return None
         override = overrides.get(node_id)
         raw = {**base, **override} if override else base
         if not force_visible and raw.get("visible") is False:
             return None
 
-        self._budget -= 1
+        self.budget -= 1
         node = self.node(node_id, raw)
 
-        if depth >= _MAX_DEPTH:
+        if depth >= MAX_DEPTH:
             return node
 
         node_type = raw.get("type")
@@ -493,9 +493,9 @@ class _TreeBuilder:
             )
             if symbol_id and symbol_id in self.raw and symbol_id not in symbol_stack:
                 merged = {target: dict(fields) for target, fields in overrides.items()}
-                for target, fields in self._override_map(raw).items():
+                for target, fields in self.override_map(raw).items():
                     merged.setdefault(target, {}).update(fields)
-                master = self._walk(
+                master = self.walk(
                     symbol_id,
                     depth=depth + 1,
                     overrides=merged,
@@ -528,7 +528,7 @@ class _TreeBuilder:
 
         children = []
         for child_id in self.children.get(node_id, []):
-            child = self._walk(
+            child = self.walk(
                 child_id,
                 depth=depth + 1,
                 overrides=overrides,
@@ -560,7 +560,7 @@ def build_screen_trees(out: Path) -> dict[str, Any]:
     if paths is None:
         console.print("[yellow]No blobs.bin found; vector outlines will be skipped[/]")
 
-    builder = _TreeBuilder(nodes_file, paths)
+    builder = TreeBuilder(nodes_file, paths)
     trees_dir = design / "trees"
     trees_dir.mkdir(parents=True, exist_ok=True)
 

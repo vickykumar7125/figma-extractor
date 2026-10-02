@@ -31,11 +31,11 @@ from typing import Any
 
 import orjson
 
-_ARG_COUNT = {0: 0, 1: 2, 2: 2, 3: 4, 4: 6}
-_LETTER = {0: "Z", 1: "M", 2: "L", 3: "Q", 4: "C"}
+ARG_COUNT = {0: 0, 1: 2, 2: 2, 3: 4, 4: 6}
+LETTER = {0: "Z", 1: "M", 2: "L", 3: "Q", 4: "C"}
 
 
-def _fmt(value: float) -> str:
+def fmt(value: float) -> str:
     text = f"{value:.2f}".rstrip("0").rstrip(".")
     return "0" if text in ("", "-0") else text
 
@@ -48,7 +48,7 @@ def decode_commands(raw: bytes) -> str | None:
     while offset < size:
         command = raw[offset]
         offset += 1
-        arg_count = _ARG_COUNT.get(command)
+        arg_count = ARG_COUNT.get(command)
         if arg_count is None:
             return None
         needed = arg_count * 4
@@ -57,9 +57,9 @@ def decode_commands(raw: bytes) -> str | None:
         if arg_count:
             values = struct.unpack_from("<" + "f" * arg_count, raw, offset)
             offset += needed
-            parts.append(_LETTER[command] + " " + " ".join(_fmt(value) for value in values))
+            parts.append(LETTER[command] + " " + " ".join(fmt(value) for value in values))
         else:
-            parts.append(_LETTER[command])
+            parts.append(LETTER[command])
     return " ".join(parts) if parts else None
 
 
@@ -67,9 +67,9 @@ class PathStore:
     """Random access to decoded vector outlines for one extraction."""
 
     def __init__(self, blobs: bytes, index: list[dict[str, Any]]) -> None:
-        self._blobs = blobs
-        self._index = index
-        self._cache: dict[int, str | None] = {}
+        self.blobs = blobs
+        self.index = index
+        self.cache: dict[int, str | None] = {}
 
     @classmethod
     def load(cls, extracted: Path) -> PathStore | None:
@@ -81,15 +81,15 @@ class PathStore:
         return cls(blobs_file.read_bytes(), orjson.loads(index_file.read_bytes()))
 
     def svg_path(self, blob_index: int | None) -> str | None:
-        if blob_index is None or not 0 <= blob_index < len(self._index):
+        if blob_index is None or not 0 <= blob_index < len(self.index):
             return None
-        if blob_index in self._cache:
-            return self._cache[blob_index]
-        entry = self._index[blob_index]
+        if blob_index in self.cache:
+            return self.cache[blob_index]
+        entry = self.index[blob_index]
         offset = int(entry.get("offset", 0))
         length = int(entry.get("length", 0))
-        decoded = decode_commands(self._blobs[offset : offset + length])
-        self._cache[blob_index] = decoded
+        decoded = decode_commands(self.blobs[offset : offset + length])
+        self.cache[blob_index] = decoded
         return decoded
 
     def outlines(self, geometry: list[dict[str, Any]] | None) -> list[dict[str, str]]:

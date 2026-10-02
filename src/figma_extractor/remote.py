@@ -20,9 +20,9 @@ from figma_extractor.util import to_ndjson_line, write_json
 
 console = Console(stderr=True)
 FIGMA_API = "https://api.figma.com/v1"
-_FILE_KEY_RE = re.compile(r"/(?:design|file|board|slides)/([^/]+)")
+FILE_KEY_RE = re.compile(r"/(?:design|file|board|slides)/([^/]+)")
 # Figma image refs are hex digests; anything outside this set is not a filename.
-_UNSAFE_REF_RE = re.compile(r"[^A-Za-z0-9._-]")
+UNSAFE_REF_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 
 def parse_file_key(value: str) -> str:
@@ -39,7 +39,7 @@ def parse_file_key(value: str) -> str:
         raise ValueError("Remote Figma file key/URL cannot be empty")
     if "figma.com" not in value:
         return value
-    match = _FILE_KEY_RE.search(urlparse(value).path)
+    match = FILE_KEY_RE.search(urlparse(value).path)
     if not match:
         raise ValueError(f"Could not find a Figma file key in URL: {value}")
     return match.group(1)
@@ -51,7 +51,7 @@ class FigmaClient:
     def __init__(self, api_key: str, *, timeout: float = 120.0) -> None:
         if not api_key.strip():
             raise ValueError("A Figma API key is required for remote extraction")
-        self._client = httpx.Client(
+        self.client = httpx.Client(
             base_url=FIGMA_API,
             headers={"X-Figma-Token": api_key.strip()},
             timeout=timeout,
@@ -62,21 +62,21 @@ class FigmaClient:
         return self
 
     def __exit__(self, *args: object) -> None:
-        self._client.close()
+        self.client.close()
 
     def get_file(self, file_key: str) -> dict[str, Any]:
-        response = self._client.get(f"/files/{file_key}")
-        self._raise(response)
+        response = self.client.get(f"/files/{file_key}")
+        self.raise_for_status(response)
         return response.json()
 
     def get_images(self, file_key: str) -> dict[str, str]:
         """Fill-image asset map (hash → download URL)."""
-        response = self._client.get(f"/files/{file_key}/images")
-        self._raise(response)
+        response = self.client.get(f"/files/{file_key}/images")
+        self.raise_for_status(response)
         return (response.json().get("meta") or {}).get("images") or {}
 
     @staticmethod
-    def _raise(response: httpx.Response) -> None:
+    def raise_for_status(response: httpx.Response) -> None:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -100,7 +100,7 @@ def normalize_remote_document(payload: dict[str, Any], out_dir: Path) -> int:
             node, parent_id, position, parent_abs = stack.pop()
             handle.write(
                 to_ndjson_line(
-                    _normalize_node(
+                    normalize_node(
                         node, parent_id, position, components, parent_abs=parent_abs
                     )
                 )
@@ -120,14 +120,14 @@ def normalize_remote_document(payload: dict[str, Any], out_dir: Path) -> int:
             "lastModified": payload.get("lastModified"),
             "version": payload.get("version"),
             "source": "figma-rest-api",
-            "_counts": {"nodeChanges": count, "blobs": 0},
+            "counts": {"nodeChanges": count, "blobs": 0},
         },
     )
     console.print(f"[green]Remote document[/] {count:,} nodes → {out_dir}")
     return count
 
 
-def _safe_image_name(image_ref: str) -> str | None:
+def safe_image_name(image_ref: str) -> str | None:
     """
     Return a filesystem-safe name for an image ref, or ``None`` when unusable.
 
@@ -136,7 +136,7 @@ def _safe_image_name(image_ref: str) -> str | None:
     rewritten when it contains path separators or traversal.
     """
     name = image_ref.strip()
-    if not name or name in (".", "..") or _UNSAFE_REF_RE.search(name):
+    if not name or name in (".", "..") or UNSAFE_REF_RE.search(name):
         return None
     return name
 
@@ -148,7 +148,7 @@ def download_remote_images(image_urls: dict[str, str], destination: Path) -> int
     skipped: list[str] = []
     with httpx.Client(timeout=120, follow_redirects=True) as client:
         for image_ref, url in image_urls.items():
-            name = _safe_image_name(image_ref)
+            name = safe_image_name(image_ref)
             if name is None:
                 skipped.append(image_ref)
                 continue
@@ -170,7 +170,7 @@ def download_remote_images(image_urls: dict[str, str], destination: Path) -> int
     return count
 
 
-def _guid(node_id: str) -> dict[str, int]:
+def guid(node_id: str) -> dict[str, int]:
     parts = node_id.replace(";", ":").split(":")
     try:
         if len(parts) >= 2:
@@ -184,7 +184,7 @@ def _guid(node_id: str) -> dict[str, int]:
     }
 
 
-def _paint(paint: dict[str, Any]) -> dict[str, Any]:
+def paint(paint: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": paint.get("type"),
         "visible": paint.get("visible", True),
@@ -206,7 +206,7 @@ def _paint(paint: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _normalize_node(
+def normalize_node(
     node: dict[str, Any],
     parent_id: str | None,
     position: int,
@@ -234,7 +234,7 @@ def _normalize_node(
         local_y = 0.0
 
     result: dict[str, Any] = {
-        "guid": _guid(node_id),
+        "guid": guid(node_id),
         "phase": "CREATED",
         "type": normalized_type,
         "name": node.get("name") or "",
@@ -251,7 +251,7 @@ def _normalize_node(
         },
     }
     if parent_id:
-        result["parentIndex"] = {"guid": _guid(parent_id), "position": f"{position:08d}"}
+        result["parentIndex"] = {"guid": guid(parent_id), "position": f"{position:08d}"}
     if node_type == "COMPONENT_SET":
         result["isStateGroup"] = True
     if node_type == "COMPONENT":
@@ -271,9 +271,9 @@ def _normalize_node(
     if node.get("cornerRadius") is not None:
         result["cornerRadius"] = node["cornerRadius"]
     if node.get("fills"):
-        result["fillPaints"] = [_paint(p) for p in node["fills"] if p.get("type")]
+        result["fillPaints"] = [paint(p) for p in node["fills"] if p.get("type")]
     if node.get("strokes"):
-        result["strokePaints"] = [_paint(p) for p in node["strokes"] if p.get("type")]
+        result["strokePaints"] = [paint(p) for p in node["strokes"] if p.get("type")]
     if node.get("effects"):
         result["effects"] = node["effects"]
     if node.get("strokeWeight") is not None:

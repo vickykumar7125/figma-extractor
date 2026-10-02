@@ -14,7 +14,7 @@ from figma_extractor.util import ascii_name, gid, iter_ndjson, round_num, slug, 
 console = Console(stderr=True)
 
 
-def _slim(node: dict[str, Any]) -> dict[str, Any]:
+def slim(node: dict[str, Any]) -> dict[str, Any]:
     parent = node.get("parentIndex") or {}
     size = node.get("size") or {}
     transform = node.get("transform") or {}
@@ -43,15 +43,15 @@ def _slim(node: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _children_of(child_ids: dict[str, list[str]], nodes: dict[str, dict[str, Any]], node_id: str):
+def children_of(child_ids: dict[str, list[str]], nodes: dict[str, dict[str, Any]], node_id: str):
     kids = [nodes[cid] for cid in child_ids.get(node_id, []) if cid in nodes]
     kids.sort(key=lambda n: n.get("pos") or "")
     return kids
 
 
-def _page_of(nodes: dict[str, dict[str, Any]], node_id: str) -> dict[str, Any] | None:
+def page_of(nodes: dict[str, dict[str, Any]], node_id: str) -> dict[str, Any] | None:
     cur = nodes.get(node_id)
-    for _ in range(200):
+    for step in range(200):
         if not cur:
             return None
         if cur.get("type") == "CANVAS":
@@ -60,33 +60,33 @@ def _page_of(nodes: dict[str, dict[str, Any]], node_id: str) -> dict[str, Any] |
     return None
 
 
-def _subtree_stats(child_ids, nodes, node_id: str) -> dict[str, Any]:
+def subtree_stats(child_ids, nodes, node_id: str) -> dict[str, Any]:
     counts: dict[str, int] = defaultdict(int)
     total = 0
     stack = [node_id]
     while stack:
         cur = stack.pop()
-        for child in _children_of(child_ids, nodes, cur):
+        for child in children_of(child_ids, nodes, cur):
             counts[child["type"]] += 1
             total += 1
             stack.append(child["id"])
     return {"total": total, "counts": dict(counts)}
 
 
-def _outline(child_ids, nodes, node_id: str, max_depth: int, lines: list[str], depth: int = 0) -> None:
+def outline(child_ids, nodes, node_id: str, max_depth: int, lines: list[str], depth: int = 0) -> None:
     if depth >= max_depth:
         return
-    for child in _children_of(child_ids, nodes, node_id):
+    for child in children_of(child_ids, nodes, node_id):
         dims = f" [{child['w']}x{child['h']}]" if child.get("w") is not None else ""
         label = ""
         if child.get("text"):
             snippet = " ".join(str(child["text"]).split())[:60]
             label = f' "{snippet}"'
         lines.append(f"{'  ' * depth}- {child['type']} · {child['name']}{dims}{label}")
-        _outline(child_ids, nodes, child["id"], max_depth, lines, depth + 1)
+        outline(child_ids, nodes, child["id"], max_depth, lines, depth + 1)
 
 
-def _parse_variant(name: str) -> dict[str, str]:
+def parse_variant(name: str) -> dict[str, str]:
     props: dict[str, str] = {}
     for part in name.split(","):
         if "=" not in part:
@@ -106,18 +106,18 @@ def build_structure(out: Path) -> dict[str, Any]:
     child_ids: dict[str, list[str]] = defaultdict(list)
 
     for raw in iter_ndjson(nodes_file):
-        slim = _slim(raw)
-        if not slim["id"]:
+        record = slim(raw)
+        if not record["id"]:
             continue
-        nodes[slim["id"]] = slim
-        if slim["parentId"]:
-            child_ids[slim["parentId"]].append(slim["id"])
+        nodes[record["id"]] = record
+        if record["parentId"]:
+            child_ids[record["parentId"]].append(record["id"])
 
     canvases = [n for n in nodes.values() if n["type"] == "CANVAS"]
 
     pages = []
     for canvas in canvases:
-        stats = _subtree_stats(child_ids, nodes, canvas["id"])
+        stats = subtree_stats(child_ids, nodes, canvas["id"])
         pages.append(
             {
                 "id": canvas["id"],
@@ -137,14 +137,14 @@ def build_structure(out: Path) -> dict[str, Any]:
                         "x": n["x"],
                         "y": n["y"],
                     }
-                    for n in _children_of(child_ids, nodes, canvas["id"])
+                    for n in children_of(child_ids, nodes, canvas["id"])
                 ],
             }
         )
 
     screens = []
     for canvas in canvases:
-        for child in _children_of(child_ids, nodes, canvas["id"]):
+        for child in children_of(child_ids, nodes, canvas["id"]):
             # Kits vary: pages may be FRAME, SECTION, or a large top-level INSTANCE.
             if child["type"] not in ("FRAME", "SECTION", "INSTANCE", "COMPONENT"):
                 continue
@@ -153,7 +153,7 @@ def build_structure(out: Path) -> dict[str, Any]:
             # Skip tiny page decorations that are not screens.
             if child["type"] in ("INSTANCE", "COMPONENT") and (width < 320 or height < 320):
                 continue
-            stats = _subtree_stats(child_ids, nodes, child["id"])
+            stats = subtree_stats(child_ids, nodes, child["id"])
             screens.append(
                 {
                     "page": ascii_name(canvas["name"]),
@@ -172,7 +172,7 @@ def build_structure(out: Path) -> dict[str, Any]:
     components = []
     for symbol in symbols:
         parent = nodes.get(symbol["parentId"] or "")
-        page = _page_of(nodes, symbol["id"])
+        page = page_of(nodes, symbol["id"])
         entry: dict[str, Any] = {
             "id": symbol["id"],
             "name": symbol["name"],
@@ -194,13 +194,13 @@ def build_structure(out: Path) -> dict[str, Any]:
     for node in nodes.values():
         if not node.get("isStateGroup"):
             continue
-        page = _page_of(nodes, node["id"])
+        page = page_of(nodes, node["id"])
         axes: dict[str, set[str]] = defaultdict(set)
         variants = []
-        for child in _children_of(child_ids, nodes, node["id"]):
+        for child in children_of(child_ids, nodes, node["id"]):
             if child["type"] != "SYMBOL":
                 continue
-            props = _parse_variant(child["name"])
+            props = parse_variant(child["name"])
             for key, value in props.items():
                 axes[key].add(value)
             variants.append(
@@ -245,7 +245,7 @@ def build_structure(out: Path) -> dict[str, Any]:
             "",
             "```",
         ]
-        _outline(child_ids, nodes, page["id"], 4, lines)
+        outline(child_ids, nodes, page["id"], 4, lines)
         lines.extend(["```", ""])
         write_text(design / "structure" / f"{page['slug']}.md", "\n".join(lines))
         index_lines.append(
@@ -283,7 +283,7 @@ def build_structure(out: Path) -> dict[str, Any]:
     for node in nodes.values():
         if node["type"] != "TEXT" or not node.get("text"):
             continue
-        page = _page_of(nodes, node["id"])
+        page = page_of(nodes, node["id"])
         key = ascii_name(page["name"]) if page else "unknown"
         text_by_page[key].add(str(node["text"]).strip())
     write_json(design / "text-content.json", {k: sorted(v) for k, v in text_by_page.items()})

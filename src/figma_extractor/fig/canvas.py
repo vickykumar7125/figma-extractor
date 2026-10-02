@@ -16,7 +16,7 @@ console = Console(stderr=True)
 
 FIG_KIWI_MAGIC = b"fig-kiwi"
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
-_WRITE_BUFFER = 8 << 20
+WRITE_BUFFER = 8 << 20
 
 
 def read_chunks(buf: bytes) -> tuple[int, list[bytes]]:
@@ -74,14 +74,14 @@ def decode_canvas(canvas_path: Path, out_dir: Path) -> dict[str, Any]:
     node_changes: list[dict[str, Any]] = message.get("nodeChanges") or []
     blobs: list[dict[str, Any]] = message.get("blobs") or []
 
-    with (out_dir / "nodes.ndjson").open("w", encoding="utf-8", buffering=_WRITE_BUFFER) as handle:
+    with (out_dir / "nodes.ndjson").open("w", encoding="utf-8", buffering=WRITE_BUFFER) as handle:
         buffer: list[str] = []
         buffer_len = 0
         for node in node_changes:
             line = to_ndjson_line(node) + "\n"
             buffer.append(line)
             buffer_len += len(line)
-            if buffer_len > _WRITE_BUFFER:
+            if buffer_len > WRITE_BUFFER:
                 handle.write("".join(buffer))
                 buffer.clear()
                 buffer_len = 0
@@ -104,7 +104,7 @@ def decode_canvas(canvas_path: Path, out_dir: Path) -> dict[str, Any]:
     write_json(out_dir / "blobs-index.json", blob_index)
 
     meta = {key: value for key, value in message.items() if key not in ("nodeChanges", "blobs")}
-    meta["_counts"] = {"nodeChanges": len(node_changes), "blobs": len(blobs)}
+    meta["counts"] = {"nodeChanges": len(node_changes), "blobs": len(blobs)}
     write_json(out_dir / "document-meta.json", sanitize_for_json(meta))
 
     console.print(

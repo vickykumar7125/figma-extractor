@@ -1,0 +1,2 @@
+-r ../llm.txt
+langchain-deepseek>=1.1,<2

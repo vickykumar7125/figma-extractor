@@ -22,6 +22,102 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+test = ["pytest>=8"]
+llm = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+]
+openai = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-openai>=1.6,<2",
+  "openai>=1.99,<4",
+]
+anthropic = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-anthropic>=1.7,<2",
+  "anthropic>=1.11,<2",
+]
+google = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-google-genai>=4.4,<5",
+]
+vertex = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-google-vertexai>=3.2,<4",
+  "anthropic[vertex]>=1.11,<2",
+]
+ollama = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-ollama>=1.1,<2",
+  "ollama>=0.6,<1",
+]
+huggingface = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-huggingface>=1.2,<2",
+]
+groq = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-groq>=1.1,<2",
+]
+xai = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-xai>=1.3,<2",
+]
+nvidia = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-nvidia-ai-endpoints>=1.4,<2",
+]
+cohere = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-cohere>=0.6",
+]
+together = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-together>=0.4",
+]
+deepseek = [
+  "langgraph>=1.2,<2",
+  "langchain>=1.4,<2",
+  "langchain-core>=1.6,<2",
+  "langchain-deepseek>=1.1,<2",
+]
+all-llm = [
+  "figma-extractor[openai]",
+  "figma-extractor[anthropic]",
+  "figma-extractor[google]",
+  "figma-extractor[vertex]",
+  "figma-extractor[ollama]",
+  "figma-extractor[huggingface]",
+  "figma-extractor[groq]",
+  "figma-extractor[xai]",
+  "figma-extractor[nvidia]",
+  "figma-extractor[cohere]",
+  "figma-extractor[together]",
+  "figma-extractor[deepseek]",
+]
 
 [project.scripts]
 figma-extractor = "figma_extractor.cli:app"

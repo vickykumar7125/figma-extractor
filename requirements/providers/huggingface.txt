@@ -1,0 +1,4 @@
+# Hosted Hugging Face inference. A local pipeline also needs transformers
+# and one torch profile from requirements/torch/, installed as a second command.
+-r ../llm.txt
+langchain-huggingface>=1.2,<2
