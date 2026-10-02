@@ -2,6 +2,8 @@
 
 Extract design tokens, screens, components, and image assets from Figma.
 
+Documentation: <https://vickykumar7125.github.io/figma-extractor/>
+
 | Surface | Name |
 | --- | --- |
 | CLI / PyPI package | `figma-extractor` |

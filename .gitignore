@@ -12,6 +12,7 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+site/
 .venv/
 *.pyc
 .DS_Store

@@ -1,0 +1,50 @@
+site_name: figma-extractor
+site_description: Extract design tokens, screens, components, and image assets from Figma.
+site_url: https://vickykumar7125.github.io/figma-extractor/
+repo_url: https://github.com/vickykumar7125/figma-extractor
+repo_name: vickykumar7125/figma-extractor
+docs_dir: docs
+exclude_docs: |
+  redesign/**
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - content.code.copy
+    - search.suggest
+    - toc.follow
+
+nav:
+  - Overview: index.md
+  - Install: install.md
+  - Usage: usage.md
+  - Annotation: annotate.md
+  - Python API: python-api.md
+  - Output: output.md
+  - Project layout: layout.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.details
